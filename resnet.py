@@ -71,7 +71,7 @@ def inference(x, is_training,
     c['num_blocks'] = num_blocks
     c['stack_stride'] = 2
 
-    if False:
+    if preprocess:
         x = _imagenet_preprocess(x)
 
     with tf.variable_scope('scale1'):
