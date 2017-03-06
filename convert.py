@@ -11,6 +11,9 @@ from synset import *
 
 import resnet
 
+weight_dir = os.path.join(os.environ["TV_DIR_DATA"], 'weights')
+rundir = 'tensorflow_resnet_convert_1.1'
+
 
 class CaffeParamProvider():
     def __init__(self, caffe_net):
@@ -228,11 +231,11 @@ def parse_tf_varnames(p, tf_varname, num_layers, var):
 
 
 def checkpoint_fn(layers):
-    return 'ResNet-L%d.ckpt' % layers
+    return os.path.join(weight_dir, rundir, 'ResNet-L%d.ckpt' % layers)
 
 
 def meta_fn(layers):
-    return 'ResNet-L%d.meta' % layers
+    return os.path.join(weight_dir, rundir, 'ResNet-L%d.ckpt' % layers)
 
 
 def convert(graph, img, img_p, layers, save=True):
