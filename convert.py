@@ -106,7 +106,9 @@ def load_caffe(img_p, layers=50):
     caffe.set_mode_cpu()
 
     prototxt = "data/ResNet-%d-deploy.prototxt" % layers
-    caffemodel = "data/ResNet-%d-model.caffemodel" % layers
+    dirname = os.path.join(os.environ['TV_DIR_DATA'], 'weights/caffe')
+    filename = "ResNet-%d-model.caffemodel" % layers
+    caffemodel = os.path.join(dirname, filename)
     net = caffe.Net(prototxt, caffemodel, caffe.TEST)
 
     net.blobs['data'].data[0] = img_p.transpose((2, 0, 1))
