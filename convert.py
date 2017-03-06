@@ -256,6 +256,9 @@ def convert(graph, img, img_p, layers, save=True):
     # The checkpoint is written to at the end.
     tf.train.export_meta_graph(filename=meta_fn(layers))
 
+    import ipdb
+    ipdb.set_trace()
+
     vars_to_restore = tf.all_variables()
     saver = tf.train.Saver(vars_to_restore)
 

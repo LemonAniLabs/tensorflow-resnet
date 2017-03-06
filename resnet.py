@@ -50,35 +50,35 @@ def train(images, labels):
     ema = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
     tf.add_to_collection(UPDATE_OPS_COLLECTION, ema.apply([loss_]))
     loss_avg = ema.average(loss_)
-    tf.scalar_summary('loss_avg', loss_avg)
+    tf.summary.scalar('loss_avg', loss_avg)
 
-    tf.scalar_summary('learning_rate', FLAGS.learning_rate)
+    tf.summary.scalar('learning_rate', FLAGS.learning_rate)
 
     opt = tf.train.MomentumOptimizer(FLAGS.learning_rate, MOMENTUM)
     grads = opt.compute_gradients(loss_)
     for grad, var in grads:
         if grad is not None:
-            tf.histogram_summary(var.op.name + '/gradients', grad)
+            tf.summary.histogram(var.op.name + '/gradients', grad)
     apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
 
     for var in tf.trainable_variables():
-        tf.histogram_summary(var.op.name, var)
+        tf.summary.histogram(var.op.name, var)
 
     batchnorm_updates = tf.get_collection(UPDATE_OPS_COLLECTION)
     batchnorm_updates_op = tf.group(*batchnorm_updates)
     train_op = tf.group(apply_gradient_op, batchnorm_updates_op)
 
-    saver = tf.train.Saver(tf.all_variables())
+    saver = tf.train.Saver(tf.global_variables())
 
-    summary_op = tf.merge_all_summaries()
+    summary_op = tf.summary.merge_all()
 
-    init = tf.initialize_all_variables()
+    init = tf.global_variables_initializer()
 
     sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
     sess.run(init)
     tf.train.start_queue_runners(sess=sess)
 
-    summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
+    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
 
     if FLAGS.__getattr__('continue'):
         latest = tf.train.latest_checkpoint(FLAGS.train_dir)
@@ -157,7 +157,7 @@ def inference(x, is_training,
         x = stack(x, num_blocks[3], 512, bottleneck, is_training, stride=2)
 
     # post-net
-    x = tf.reduce_mean(x, reduction_indices=[1, 2], name="avg_pool")
+    x = tf.reduce_mean(x, axis=[1, 2], name="avg_pool")
     with tf.variable_scope('fc'):
         logits = _fc(x, num_units_out=num_classes)
 
@@ -195,7 +195,7 @@ def inference_small(x,
         x = stack(x, num_blocks, 64, bottleneck, is_training, stride=2)
 
     # post-net
-    x = tf.reduce_mean(x, reduction_indices=[1, 2], name="avg_pool")
+    x = tf.reduce_mean(x, axis=[1, 2], name="avg_pool")
     with tf.variable_scope('fc'):
         logits = _fc(x, num_units_out=num_classes)
 
@@ -204,20 +204,20 @@ def inference_small(x,
 
 def _imagenet_preprocess(rgb):
     """Changes RGB [0,1] valued image to BGR [0,255] with mean subtracted."""
-    red, green, blue = tf.split(3, 3, rgb * 255.0)
-    bgr = tf.concat(3, [blue, green, red])
+    red, green, blue = tf.split(axis=3, num_or_size_splits=3, value=rgb * 255.0)
+    bgr = tf.concat(axis=3, values=[blue, green, red])
     bgr -= IMAGENET_MEAN_BGR
     return bgr
 
 
 def loss(logits, labels):
-    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits, labels)
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
     cross_entropy_mean = tf.reduce_mean(cross_entropy)
  
     regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
 
     loss_ = tf.add_n([cross_entropy_mean] + regularization_losses)
-    tf.scalar_summary('loss', loss_)
+    tf.summary.scalar('loss', loss_)
 
     return loss_
 
@@ -291,18 +291,18 @@ def _bn(x, is_training):
 
     beta = _get_variable('beta',
                          params_shape,
-                         initializer=tf.zeros_initializer)
+                         initializer=tf.zeros_initializer())
     gamma = _get_variable('gamma',
                           params_shape,
-                          initializer=tf.ones_initializer)
+                          initializer=tf.ones_initializer())
 
     moving_mean = _get_variable('moving_mean',
                                 params_shape,
-                                initializer=tf.zeros_initializer,
+                                initializer=tf.zeros_initializer(),
                                 trainable=False)
     moving_variance = _get_variable('moving_variance',
                                     params_shape,
-                                    initializer=tf.ones_initializer,
+                                    initializer=tf.ones_initializer(),
                                     trainable=False)
 
     # These ops will only be preformed when training.
@@ -335,7 +335,7 @@ def _fc(x, num_units_out):
                             weight_decay=FC_WEIGHT_STDDEV)
     biases = _get_variable('biases',
                            shape=[num_units_out],
-                           initializer=tf.zeros_initializer)
+                           initializer=tf.zeros_initializer())
     x = tf.nn.xw_plus_b(x, weights, biases)
     return x
 
