@@ -227,7 +227,7 @@ def meta_fn(layers):
     return 'ResNet-L%d.meta' % layers
 
 
-def convert(graph, img, img_p, layers):
+def convert(graph, img, img_p, layers, save=True):
     caffe_model = load_caffe(img_p, layers)
 
     #for i, n in enumerate(caffe_model.params):
@@ -304,7 +304,8 @@ def convert(graph, img, img_p, layers):
     assert prob_dist < 0.2  # XXX can this be tightened?
 
     # We've already written the metagraph to avoid a bunch of assign ops.
-    saver.save(sess, checkpoint_fn(layers), write_meta_graph=False)
+    if save:
+        saver.save(sess, checkpoint_fn(layers), write_meta_graph=False)
 
 
 def save_graph(save_path):
@@ -320,15 +321,22 @@ def save_graph(save_path):
 
 
 def main(_):
-    img = load_image("data/cat.jpg")
-    print img
-    img_p = preprocess(img)
 
-    for layers in [50, 101, 152]:
-        g = tf.Graph()
-        with g.as_default():
-            print "CONVERT", layers
-            convert(g, img, img_p, layers)
+    images = ['cat.jpg', 'dog2.jpg', 'tabby_cat.png', 'tiger.jpeg']
+
+    for image in images:
+        print("")
+        print(image)
+        img = load_image(os.path.join('data', image))
+        img_p = preprocess(img)
+
+        for layers in [50, 101, 152]:
+            g = tf.Graph()
+            with g.as_default():
+                print "CONVERT", layers
+                convert(g, img, img_p, layers, save=True)
+
+        break
 
 
 if __name__ == '__main__':
