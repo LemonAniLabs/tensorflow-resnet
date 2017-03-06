@@ -181,8 +181,8 @@ def parse_tf_varnames(p, tf_varname, num_layers, var):
             tf_varname.split('/')[-1] == 'local_step':
         if tf_varname.split('/')[-2] == 'moving_variance' or \
                 tf_varname.split('/')[-2] == 'moving_mean':
+            # 'Skipping new moving average variabels'
             # print('Skipping {}'.format(tf_varname))
-            print('Skipping new moving average variabels')
             return None
 
     scale_num = int(m.group(1))
