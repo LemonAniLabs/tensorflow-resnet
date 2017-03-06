@@ -71,7 +71,7 @@ def inference(x, is_training,
     c['num_blocks'] = num_blocks
     c['stack_stride'] = 2
 
-    if preprocess:
+    if False:
         x = _imagenet_preprocess(x)
 
     with tf.variable_scope('scale1'):
@@ -106,7 +106,7 @@ def inference(x, is_training,
         x = stack(x, c)
 
     # post-net
-    x = tf.reduce_mean(x, reduction_indices=[1, 2], name="avg_pool")
+    x = tf.reduce_mean(x, axis=[1, 2], name="avg_pool")
 
     if num_classes is not None:
         with tf.variable_scope('fc'):
@@ -157,7 +157,7 @@ def inference_small_config(x, c):
         x = stack(x, c)
 
     # post-net
-    x = tf.reduce_mean(x, reduction_indices=[1, 2], name="avg_pool")
+    x = tf.reduce_mean(x, axis=[1, 2], name="avg_pool")
 
     if c['num_classes'] is not None:
         with tf.variable_scope('fc'):
@@ -168,22 +168,23 @@ def inference_small_config(x, c):
 
 def _imagenet_preprocess(rgb):
     """Changes RGB [0,1] valued image to BGR [0,255] with mean subtracted."""
-    red, green, blue = tf.split(3, 3, rgb * 255.0)
-    bgr = tf.concat(3, [blue, green, red])
+    red, green, blue = tf.split(axis=3, num_or_size_splits=3,
+                                value=rgb * 255.0)
+    bgr = tf.concat(axis=3, values=[blue, green, red])
     bgr -= IMAGENET_MEAN_BGR
     return bgr
 
 
 def loss(logits, labels):
     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        logits, labels)
+        logits=logits, labels=labels)
     cross_entropy_mean = tf.reduce_mean(cross_entropy)
 
     regularization_losses = tf.get_collection(
         tf.GraphKeys.REGULARIZATION_LOSSES)
 
     loss_ = tf.add_n([cross_entropy_mean] + regularization_losses)
-    tf.scalar_summary('loss', loss_)
+    tf.summary.scalar('loss', loss_)
 
     return loss_
 
@@ -263,25 +264,25 @@ def bn(x, c):
 
     if c['use_bias']:
         bias = _get_variable('bias', params_shape,
-                             initializer=tf.zeros_initializer)
+                             initializer=tf.zeros_initializer())
         return x + bias
 
     axis = list(range(len(x_shape) - 1))
 
     beta = _get_variable('beta',
                          params_shape,
-                         initializer=tf.zeros_initializer)
+                         initializer=tf.zeros_initializer())
     gamma = _get_variable('gamma',
                           params_shape,
-                          initializer=tf.ones_initializer)
+                          initializer=tf.ones_initializer())
 
     moving_mean = _get_variable('moving_mean',
                                 params_shape,
-                                initializer=tf.zeros_initializer,
+                                initializer=tf.zeros_initializer(),
                                 trainable=False)
     moving_variance = _get_variable('moving_variance',
                                     params_shape,
-                                    initializer=tf.ones_initializer,
+                                    initializer=tf.ones_initializer(),
                                     trainable=False)
 
     # These ops will only be preformed when training.
@@ -315,7 +316,7 @@ def fc(x, c):
                             weight_decay=FC_WEIGHT_STDDEV)
     biases = _get_variable('biases',
                            shape=[num_units_out],
-                           initializer=tf.zeros_initializer)
+                           initializer=tf.zeros_initializer())
     x = tf.nn.xw_plus_b(x, weights, biases)
     return x
 
@@ -332,7 +333,7 @@ def _get_variable(name,
         regularizer = tf.contrib.layers.l2_regularizer(weight_decay)
     else:
         regularizer = None
-    collections = [tf.GraphKeys.VARIABLES, RESNET_VARIABLES]
+    collections = [tf.GraphKeys.GLOBAL_VARIABLES, RESNET_VARIABLES]
     return tf.get_variable(name,
                            shape=shape,
                            initializer=initializer,
