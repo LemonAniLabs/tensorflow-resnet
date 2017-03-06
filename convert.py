@@ -271,7 +271,7 @@ def convert(graph, img, img_p, layers, save=True):
     saver = tf.train.Saver(vars_to_restore)
 
     sess = tf.Session()
-    sess.run(tf.global_variables_initializer)
+    sess.run(tf.global_variables_initializer())
 
     assigns = []
     for var in vars_to_restore:
