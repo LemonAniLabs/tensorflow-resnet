@@ -135,7 +135,7 @@ def print_prob(prob):
     return top1
 
 
-def parse_tf_varnames(p, tf_varname, num_layers):
+def parse_tf_varnames(p, tf_varname, num_layers, var):
     if tf_varname == 'scale1/weights':
         return p.conv_kernel('conv1')
 
@@ -167,6 +167,14 @@ def parse_tf_varnames(p, tf_varname, num_layers):
 
     def letter(i):
         return chr(ord('a') + i - 1)
+
+    if tf_varname.split('/')[-1] == 'biased' or \
+            tf_varname.split('/')[-1] == 'local_step':
+        if tf_varname.split('/')[-2] == 'moving_variance' or \
+                tf_varname.split('/')[-2] == 'moving_mean':
+            # print('Skipping {}'.format(tf_varname))
+            print('Skipping new moving average variabels')
+            return None
 
     scale_num = int(m.group(1))
 
@@ -256,10 +264,7 @@ def convert(graph, img, img_p, layers, save=True):
     # The checkpoint is written to at the end.
     tf.train.export_meta_graph(filename=meta_fn(layers))
 
-    import ipdb
-    ipdb.set_trace()
-
-    vars_to_restore = tf.all_variables()
+    vars_to_restore = tf.global_variables()
     saver = tf.train.Saver(vars_to_restore)
 
     sess = tf.Session()
@@ -267,8 +272,10 @@ def convert(graph, img, img_p, layers, save=True):
 
     assigns = []
     for var in vars_to_restore:
-        #print var.op.name
-        data = parse_tf_varnames(param_provider, var.op.name, layers)
+        # print var.op.name
+        data = parse_tf_varnames(param_provider, var.op.name, layers, var)
+        if data is None:
+            continue
         #print "caffe data shape", data.shape
         #print "tf shape", var.get_shape()
         assigns.append(var.assign(data))
