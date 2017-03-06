@@ -1,5 +1,30 @@
-import skimage.io  # bug. need to import this before tensorflow
-import skimage.transform  # bug. need to import this before tensorflow
+"""
+The MIT License (MIT)
+
+Original work Copyright (c) 2016 Ryan Dahl
+Modified work Copyright (c) 2017 Marvin Teichmann
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+
+# import skimage.io  # bug. need to import this before tensorflow
+# import skimage.transform  # bug. need to import this before tensorflow
 import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.training import moving_averages
@@ -31,8 +56,9 @@ activation = tf.nn.relu
 def inference(x, is_training,
               num_classes=1000,
               num_blocks=[3, 4, 6, 3],  # defaults to 50-layer network
-              use_bias=False, # defaults to using batch norm
-              bottleneck=True):
+              use_bias=False,  # defaults to using batch norm
+              bottleneck=True,
+              preprocess=False):
     c = Config()
     c['bottleneck'] = bottleneck
     c['is_training'] = tf.convert_to_tensor(is_training,
@@ -44,6 +70,9 @@ def inference(x, is_training,
     c['fc_units_out'] = num_classes
     c['num_blocks'] = num_blocks
     c['stack_stride'] = 2
+
+    if preprocess:
+        x = _imagenet_preprocess(x)
 
     with tf.variable_scope('scale1'):
         c['conv_filters_out'] = 64
@@ -79,7 +108,7 @@ def inference(x, is_training,
     # post-net
     x = tf.reduce_mean(x, reduction_indices=[1, 2], name="avg_pool")
 
-    if num_classes != None:
+    if num_classes is not None:
         with tf.variable_scope('fc'):
             x = fc(x, c)
 
@@ -90,8 +119,8 @@ def inference(x, is_training,
 # See Section 4.2 in http://arxiv.org/abs/1512.03385
 def inference_small(x,
                     is_training,
-                    num_blocks=3, # 6n+2 total weight layers will be used.
-                    use_bias=False, # defaults to using batch norm
+                    num_blocks=3,  # 6n+2 total weight layers will be used.
+                    use_bias=False,  # defaults to using batch norm
                     num_classes=10):
     c = Config()
     c['is_training'] = tf.convert_to_tensor(is_training,
@@ -102,6 +131,7 @@ def inference_small(x,
     c['num_blocks'] = num_blocks
     c['num_classes'] = num_classes
     inference_small_config(x, c)
+
 
 def inference_small_config(x, c):
     c['bottleneck'] = False
@@ -129,7 +159,7 @@ def inference_small_config(x, c):
     # post-net
     x = tf.reduce_mean(x, reduction_indices=[1, 2], name="avg_pool")
 
-    if c['num_classes'] != None:
+    if c['num_classes'] is not None:
         with tf.variable_scope('fc'):
             x = fc(x, c)
 
@@ -145,10 +175,12 @@ def _imagenet_preprocess(rgb):
 
 
 def loss(logits, labels):
-    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits, labels)
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        logits, labels)
     cross_entropy_mean = tf.reduce_mean(cross_entropy)
- 
-    regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+
+    regularization_losses = tf.get_collection(
+        tf.GraphKeys.REGULARIZATION_LOSSES)
 
     loss_ = tf.add_n([cross_entropy_mean] + regularization_losses)
     tf.scalar_summary('loss', loss_)
@@ -168,9 +200,10 @@ def stack(x, c):
 def block(x, c):
     filters_in = x.get_shape()[-1]
 
-    # Note: filters_out isn't how many filters are outputed. 
-    # That is the case when bottleneck=False but when bottleneck is 
-    # True, filters_internal*4 filters are outputted. filters_internal is how many filters
+    # Note: filters_out isn't how many filters are outputed.
+    # That is the case when bottleneck=False but when bottleneck is
+    # True, filters_internal*4 filters are outputted. filters_internal
+    # is how many filters
     # the 3x3 convs output internally.
     m = 4 if c['bottleneck'] else 1
     filters_out = m * c['block_filters_internal']
@@ -233,7 +266,6 @@ def bn(x, c):
                              initializer=tf.zeros_initializer)
         return x + bias
 
-
     axis = list(range(len(x_shape) - 1))
 
     beta = _get_variable('beta',
@@ -266,7 +298,7 @@ def bn(x, c):
         lambda: (moving_mean, moving_variance))
 
     x = tf.nn.batch_normalization(x, mean, variance, beta, gamma, BN_EPSILON)
-    #x.set_shape(inputs.get_shape()) ??
+    # x.set_shape(inputs.get_shape()) ??
 
     return x
 
