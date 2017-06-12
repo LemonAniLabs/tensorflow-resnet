@@ -25,7 +25,7 @@ import tarfile
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves import urllib
 
-import resnet
+import gtavResnet
 import tensorflow as tf
 
 DATA_URL = 'http://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz'
@@ -94,8 +94,12 @@ def read_cifar10(filename_queue):
     record_bytes = tf.decode_raw(value, tf.uint8)
 
     # The first bytes represent the label, which we convert from uint8->int32.
-    result.label = tf.cast(
-        tf.slice(record_bytes, [0], [label_bytes]), tf.int32)
+    alabel =  tf.cast(
+        tf.slice(record_bytes, [0], [label_bytes]), tf.float32)
+
+    #result.label = tf.cast(
+    #    tf.slice(record_bytes, [0], [label_bytes]), tf.int32)
+    result.label = [alabel, alabel, alabel, alabel, alabel, alabel]
 
     # The remaining bytes after the label represent the image, which we reshape
     # from [depth * height * width] to [depth, height, width].
@@ -143,7 +147,7 @@ def _generate_image_and_label_batch(image, label, min_queue_examples,
 
     # Display the training images in the visualizer.
     tf.summary.image('images', images)
-    return images, tf.reshape(label_batch, [batch_size])
+    return images, tf.reshape(label_batch, [batch_size, 6])
 
 
 def distorted_inputs(data_dir, batch_size):
@@ -293,7 +297,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     tf.gfile.MakeDirs(FLAGS.train_dir)
 
     images, labels = distorted_inputs(FLAGS.data_dir, FLAGS.batch_size)
-    resnet.train(images, labels)
+    gtavResnet.train(images, labels)
 
 
 if __name__ == '__main__':

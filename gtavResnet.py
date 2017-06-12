@@ -3,12 +3,13 @@ import skimage.transform  # bug. need to import this before tensorflow
 import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.training import moving_averages
+from gtav.data_utils import get_dataset
 
 import datetime
 import numpy as np
 import os
-import time
 import sys
+import time
 from termcolor import colored, cprint
 
 MOVING_AVERAGE_DECAY = 0.9997
@@ -24,61 +25,114 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', '/tmp/resnet_retrain',
+tf.app.flags.DEFINE_string('train_dir', './model',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_float('learning_rate', 0.1, "learning rate.")
+tf.app.flags.DEFINE_float('learning_rate', 0.01, "learning rate.")
+tf.app.flags.DEFINE_float(
+    'end_learning_rate', 0.0001,
+    'The minimal end learning rate used by a polynomial decay learning rate.')
+tf.app.flags.DEFINE_float(
+    'learning_rate_decay_factor', 0.94, 'Learning rate decay factor.')
+
+tf.app.flags.DEFINE_float(
+    'num_epochs_per_decay', 2.0,
+    'Number of epochs after which learning rate decays.')
+tf.app.flags.DEFINE_float(
+    'moving_average_decay', None,
+    'The decay to use for the moving average.'
+    'If left as None, then moving averages are not used.')
 tf.app.flags.DEFINE_integer('batch_size', 64, "batch size")
-tf.app.flags.DEFINE_integer('input_size', 224, "input image size")
+tf.app.flags.DEFINE_integer('input_size', 227, "input image size")
 tf.app.flags.DEFINE_boolean('continue', False,
                             'resume from latest saved state')
-tf.app.flags.DEFINE_integer('max_iter', 1000, "maximum training iteration")
 
-import errno
-import shutil
+def guarantee_initialized_variables(session, list_of_variables = None):
+    if list_of_variables is None:
+        list_of_variables = tf.all_variables()
+    #uninitialized_variables = list(tf.global_variables(name) for name in
+    #                               session.run(tf.report_uninitialized_variables(list_of_variables)))
+    #session.run(tf.initialize_variables(uninitialized_variables))
+    print(session.run(tf.report_uninitialized_variables(list_of_variables)))
+    #return unintialized_variables
 
-def copyanything(src, dst): 
-    try:
-        shutil.copytree(src, dst)
-    except OSError as exc: # python >2.5
-        if exc.errno == errno.ENOTDIR:
-            shutil.copy(src, dst)
-        else: raise
+def initialize_uninitialized(sess):
+    global_vars          = tf.global_variables()
+    is_not_initialized   = sess.run([tf.is_variable_initialized(var) for var in global_vars])
+    not_initialized_vars = [v for (v, f) in zip(global_vars, is_not_initialized) if not f]
+
+    print([str(i.name) for i in not_initialized_vars]) # only for testing
+    if len(not_initialized_vars):
+        sess.run(tf.variables_initializer(not_initialized_vars))
+
+def train():
+    
+    labels = tf.placeholder("float", [None, 6], name="labels")
+    images = tf.placeholder("float",
+                            [None, FLAGS.input_size, FLAGS.input_size, 3],
+                            name="images")
+    """ TODO: IMAGE PREPROCESSING """
+    tf.summary.image('images_ori', images)
+
+    with tf.variable_scope("") as vs:
+        _x = inference(images,
+                           num_classes=6,
+                           is_training=True,
+                           preprocess=False,
+                           bottleneck=True,
+                           num_blocks=[3, 4, 6, 3])
+        vs.reuse_variables()
+        _eval = inference(images,
+                           num_classes=6,
+                           is_training=False,
+                           preprocess=False,
+                           bottleneck=True,
+                           num_blocks=[3, 4, 6, 3])
 
 
-def copyDirectory(src, dest):
-    try:
-        shutil.copytree(src, dest)
-    # Directories are the same
-    except shutil.Error as e:
-        print('Directory not copied. Error: %s' % e)
-    # Any error saying that the directory doesn't exist
-    except OSError as e:
-        print('Directory not copied. Error: %s' % e)
+    # RESOTRE SUBSET OF WEIGHT
+    sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
+    if FLAGS.__getattr__('continue'):
+        latest = tf.train.latest_checkpoint(FLAGS.train_dir)
+        if not latest:
+            print("No checkpoint to continue from in", FLAGS.train_dir)
+            sys.exit(1)
+        print("continue", latest)
+        saver = tf.train.Saver()
+        saver.restore(sess, latest)
 
-def train(images, labels):
     global_step = tf.get_variable('global_step', [],
                                   initializer=tf.constant_initializer(0),
                                   trainable=False)
+    # post-net
+    x = tf.reduce_mean(_x, axis=[1, 2], name="avg_pool")
+    with tf.variable_scope('fc'):
+        logits = _fc(x, num_units_out=6, _sess=sess)
 
-    logits = inference(images,
-                       num_classes=1000,
-                       is_training=True,
-                       preprocess=True,
-                       bottleneck=True,
-                       num_blocks=[3, 4, 6, 3])
-
-    loss_ = loss(logits, labels)
+    cprint('Construct Network Succes', 'yellow')
+    cprint('Label shape' + str(labels), 'red')
+    cprint('Logits shape' + str(logits), 'red')
+    loss_ = new_loss(logits, labels, tf.to_float(tf.shape(images)[0]))
     cprint('loss -> ' + str(loss_), 'red')
     # loss_avg
     ema = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
     tf.add_to_collection(UPDATE_OPS_COLLECTION, ema.apply([loss_]))
     loss_avg = ema.average(loss_)
     tf.summary.scalar('loss_avg', loss_avg)
+    
+    #Define Learning Rate Decay Function
+    num_samples_per_epoch = 490 * 1000
+    decay_steps = int(num_samples_per_epoch / FLAGS.batch_size * FLAGS.num_epochs_per_decay)
+    learning_rate_ = tf.train.exponential_decay(FLAGS.learning_rate,
+                                      global_step,
+                                      decay_steps,
+                                      FLAGS.learning_rate_decay_factor,
+                                      staircase=True,
+                                      name='exponential_decay_learning_rate')
+    tf.summary.scalar('learning_rate', learning_rate_)
 
-    tf.summary.scalar('learning_rate', FLAGS.learning_rate)
 
-    opt = tf.train.MomentumOptimizer(FLAGS.learning_rate, MOMENTUM)
+    opt = tf.train.MomentumOptimizer(learning_rate_, MOMENTUM)
     grads = opt.compute_gradients(loss_)
     for grad, var in grads:
         if grad is not None:
@@ -92,37 +146,37 @@ def train(images, labels):
     batchnorm_updates_op = tf.group(*batchnorm_updates)
     train_op = tf.group(apply_gradient_op, batchnorm_updates_op)
 
-    saver = tf.train.Saver(tf.global_variables())
+    #saver = tf.train.Saver(tf.global_variables())
 
     summary_op = tf.summary.merge_all()
 
-    init = tf.global_variables_initializer()
-    names_to_vars = {v.op.name: v for v in tf.all_variables()}
-    #cprint(v,'yellow') for v in names_to_vars
-    cprint("\n".join([str(x) for x in names_to_vars]))
-    #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.333)
-    sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
-        #, gpu_options=gpu_options))
-    #sess = tf.Session()
-    sess.run(init)
+    #init = tf.global_variables_initializer()
+
+    #sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
+    #sess.run(tf.variables_initializer([global_step, loss_avg]))
+    #guarantee_initialized_variables(sess)
+    initialize_uninitialized(sess)
+    #sess.run(init)
     tf.train.start_queue_runners(sess=sess)
 
     summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
 
-    if FLAGS.__getattr__('continue'):
-        latest = tf.train.latest_checkpoint(FLAGS.train_dir)
-        if not latest:
-            print "No checkpoint to continue from in", FLAGS.train_dir
-            sys.exit(1)
-        print "continue", latest
-        #saver = tf.train.import_meta_graph(FLAGS.train_dir + '/ResNet-L50.ckpt.meta')
-        saver.restore(sess, latest)
-        cprint('Restore Success', 'red')
+    #if FLAGS.__getattr__('continue'):
+    #    latest = tf.train.latest_checkpoint(FLAGS.train_dir)
+    #    if not latest:
+    #        print("No checkpoint to continue from in", FLAGS.train_dir)
+    #        sys.exit(1)
+    #    print("continue", latest)
+    #    saver.restore(sess, latest)
 
+    train_dataset = get_dataset(FLAGS.data_path)
+    train_data_provider = train_dataset.iterate_forever(FLAGS.batch_size)
+    eval_dataset = get_dataset(FLAGS.data_path, train=False)
     while True:
         start_time = time.time()
 
         #images_, labels_ = dataset.get_batch(FLAGS.batch_size, FLAGS.input_size)
+        images_, targets_ = next(train_data_provider)
 
         step = sess.run(global_step)
         i = [train_op, loss_]
@@ -131,13 +185,34 @@ def train(images, labels):
         if write_summary:
             i.append(summary_op)
 
-        o = sess.run(i)
+        o = sess.run(i, {
+            images: images_,
+            labels: targets_,
+        })
 
         loss_value = o[1]
 
         duration = time.time() - start_time
 
         assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
+
+        # Do evaluation
+        if step % 1000 ==0:
+            losses = []
+            for eval_images, eval_targets in eval_dataset.iterate_once(FLAGS.batch_size):
+                preds = sess.run(logits, {images: eval_images})
+                losses += [np.square(eval_targets - preds)]
+            losses = np.concatenate(losses)
+            print("Eval: shape: {}".format(losses.shape))
+            summary = tf.Summary()
+            summary.value.add(tag="eval/loss", simple_value=float(0.5 * losses.sum() / losses.shape[0]))
+            names = ["spin", "direction", "speed", "speed_change", "steering", "throttle"]
+            for i in range(len(names)):
+                summary.value.add(tag="eval/{}".format(names[i]), simple_value=float(0.5 * losses[:, i].mean()))
+            print(summary)
+            summary_writer.add_summary(summary, step)
+            #summart_writer.flush()
+
 
         if step % 5 == 0:
             examples_per_sec = FLAGS.batch_size / float(duration)
@@ -150,23 +225,9 @@ def train(images, labels):
             summary_writer.add_summary(summary_str, step)
 
         # Save the model checkpoint periodically.
-        if step > 1 and step % 500 == 0:
-            _stepForSave = str(int(step)+1)
-            save_path = '/home/lennon.lin/Checkpoint/'+_stepForSave+'/'
-            if not os.path.exists(save_path):
-                os.mkdir(save_path)
+        if step > 1 and step % 100 == 0:
             checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
             saver.save(sess, checkpoint_path, global_step=global_step)
-
-            copyanything(FLAGS.train_dir+'/model.ckpt-'+_stepForSave+'.meta', save_path+'/model.ckpt-'+_stepForSave+'.meta')
-            copyanything(FLAGS.train_dir+'/model.ckpt-'+_stepForSave+'.index', save_path+'/model.ckpt-'+_stepForSave+'.index')
-            copyanything(FLAGS.train_dir+'/model.ckpt-'+_stepForSave+'.data-00000-of-00001', save_path+'/model.ckpt-'+_stepForSave+'.data-00000-of-00001')
-            copyanything(FLAGS.train_dir+'/checkpoint', save_path+'/checkpoint')
-
-            cprint('Save checkpoint -> ' + _stepForSave, 'yellow')
-
-        if step > FLAGS.max_iter:
-            break
 
 
 def inference(x, is_training,
@@ -178,6 +239,7 @@ def inference(x, is_training,
     # subtracted
     if preprocess:
         x = _imagenet_preprocess(x)
+        tf.summary.image('images', x)
 
     is_training = tf.convert_to_tensor(is_training,
                                        dtype='bool',
@@ -199,14 +261,10 @@ def inference(x, is_training,
         x = stack(x, num_blocks[2], 256, bottleneck, is_training, stride=2)
 
     with tf.variable_scope('scale5'):
-        x = stack(x, num_blocks[3], 512, bottleneck, is_training, stride=2)
+        _x = stack(x, num_blocks[3], 512, bottleneck, is_training, stride=2)
 
-    # post-net
-    x = tf.reduce_mean(x, axis=[1, 2], name="avg_pool")
-    with tf.variable_scope('fc'):
-        logits = _fc(x, num_units_out=num_classes)
 
-    return logits
+    return _x
 
 
 # This is what they use for CIFAR-10 and 100.
@@ -254,6 +312,23 @@ def _imagenet_preprocess(rgb):
     bgr -= IMAGENET_MEAN_BGR
     return bgr
 
+
+def new_loss(logits, labels, x_shape):
+
+    l2_norm = tf.global_norm(tf.trainable_variables())
+    loss_ = 0.5 * tf.reduce_sum(tf.square(logits - labels)) / x_shape
+    tf.summary.scalar("model/loss", loss_)
+    tf.summary.scalar("model/l2_norm", l2_norm)
+    total_loss = loss_ + 0.0005 * l2_norm
+    #cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
+    #cross_entropy_mean = tf.reduce_mean(cross_entropy)
+ 
+    #regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+
+    #loss_ = tf.add_n([cross_entropy_mean] + regularization_losses)
+    tf.summary.scalar('model/total_loss', total_loss)
+
+    return total_loss
 
 def loss(logits, labels):
     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
@@ -369,7 +444,7 @@ def _bn(x, is_training):
     return x
 
 
-def _fc(x, num_units_out):
+def _fc(x, num_units_out, _sess):
     num_units_in = x.get_shape()[1]
     weights_initializer = tf.truncated_normal_initializer(
         stddev=FC_WEIGHT_STDDEV)
@@ -381,6 +456,7 @@ def _fc(x, num_units_out):
     biases = _get_variable('biases',
                            shape=[num_units_out],
                            initializer=tf.zeros_initializer())
+    _sess.run(tf.variables_initializer([weights, biases]))
     x = tf.nn.xw_plus_b(x, weights, biases)
     return x
 

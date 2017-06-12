@@ -1,6 +1,6 @@
 import skimage.io  # bug. need to import this before tensorflow
 import skimage.transform  # bug. need to import this before tensorflow
-import resnet
+import gtavResnet
 import tensorflow as tf
 import time
 import os
@@ -8,14 +8,13 @@ import sys
 import re
 import numpy as np
 from termcolor import colored, cprint
+from gtav.data_utils import get_dataset
 
 from synset import *
 from image_processing import image_preprocessing
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('data_dir', '/home/lennon.lin/DataSet/imagenet/ILSVRC2012_img_train',
-                           'imagenet dir')
-
+tf.app.flags.DEFINE_string("data_path", "/home/lennon.lin/DataSet/DeepDrive/gtav_42", "Data path.")
 
 class DataSet:
     def __init__(self, data_dir):
@@ -28,7 +27,7 @@ class DataSet:
 
 def file_list(data_dir):
     dir_txt = data_dir + ".txt"
-    print 'dir_txt -> ', dir_txt
+    print('dir_txt -> ', dir_txt)
     filenames = []
     with open(dir_txt, 'r') as f:
         for line in f:
@@ -43,11 +42,11 @@ def load_data(data_dir):
     data = []
     i = 0
 
-    print "listing files in", data_dir
+    print("listing files in", data_dir)
     start_time = time.time()
     files = file_list(data_dir)
     duration = time.time() - start_time
-    print "took %f sec" % duration
+    print("took %f sec" % duration)
 
     for img_fn in files:
         f_name, ext = os.path.splitext(img_fn)
@@ -133,9 +132,9 @@ def distorted_inputs():
 
 
 def main(_):
-    dataset = DataSet(FLAGS.data_dir)
-    images, labels = distorted_inputs()
-    resnet.train(images, labels)
+    #dataset = DataSet(FLAGS.data_dir)
+    #images, labels = distorted_inputs()
+    gtavResnet.train()
 
 
 if __name__ == '__main__':
