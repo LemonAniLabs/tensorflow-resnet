@@ -25,7 +25,7 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', './model',
+tf.app.flags.DEFINE_string('train_dir', './pure-model',
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_float('learning_rate', 0.01, "learning rate.")
@@ -91,15 +91,15 @@ def train():
 
 
     # RESOTRE SUBSET OF WEIGHT
-    sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
-    if FLAGS.__getattr__('continue'):
-        latest = tf.train.latest_checkpoint(FLAGS.train_dir)
-        if not latest:
-            print("No checkpoint to continue from in", FLAGS.train_dir)
-            sys.exit(1)
-        print("continue", latest)
-        saver = tf.train.Saver()
-        saver.restore(sess, latest)
+    #sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
+    #if FLAGS.__getattr__('continue'):
+    #    latest = tf.train.latest_checkpoint(FLAGS.train_dir)
+    #    if not latest:
+    #        print("No checkpoint to continue from in", FLAGS.train_dir)
+    #        sys.exit(1)
+    #    print("continue", latest)
+    #    saver = tf.train.Saver()
+    #    saver.restore(sess, latest)
 
     global_step = tf.get_variable('global_step', [],
                                   initializer=tf.constant_initializer(0),
@@ -107,7 +107,7 @@ def train():
     # post-net
     x = tf.reduce_mean(_x, axis=[1, 2], name="avg_pool")
     with tf.variable_scope('fc'):
-        logits = _fc(x, num_units_out=6, _sess=sess)
+        logits = _fc(x, num_units_out=6)
 
     cprint('Construct Network Succes', 'yellow')
     cprint('Label shape' + str(labels), 'red')
@@ -146,6 +146,33 @@ def train():
     batchnorm_updates_op = tf.group(*batchnorm_updates)
     train_op = tf.group(apply_gradient_op, batchnorm_updates_op)
 
+    # INIT VARIABLE
+    init_op = tf.initialize_all_variables()
+    pretrained_var_map = {}    
+    for v in tf.trainable_variables():
+        found = False
+        for bad_layer in ["fc"]:
+            if bad_layer in v.name:
+                found = True
+                cprint('bad layers -> ' + str(bad_layer), 'yellow')
+#        if found:
+#            continue
+
+        pretrained_var_map[v.op.name[6:]] = v
+        print(v.op.name, v.get_shape())
+    resnet_saver = tf.train.Saver(pretrained_var_map)
+
+    def init_fn(ses):
+        print("Initializing parameters.")
+        if FLAGS.__getattr__('continue'):
+            latest = tf.train.latest_checkpoint(FLAGS.train_dir)
+            if not latest:
+                print("No checkpoint to continue from in", FLAGS.train_dir)
+                sys.exit(1)
+            print("continue", latest)
+            ses.run(init_op)
+            resnet_saver.restore(ses, latest)
+
     #saver = tf.train.Saver(tf.global_variables())
 
     summary_op = tf.summary.merge_all()
@@ -155,12 +182,11 @@ def train():
     #sess = tf.Session(config=tf.ConfigProto(log_device_placement=False))
     #sess.run(tf.variables_initializer([global_step, loss_avg]))
     #guarantee_initialized_variables(sess)
-    initialize_uninitialized(sess)
+    
+    #initialize_uninitialized(sess)
     #sess.run(init)
-    tf.train.start_queue_runners(sess=sess)
 
-    summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
-
+    config=tf.ConfigProto(log_device_placement=False, allow_soft_placement=True)
     #if FLAGS.__getattr__('continue'):
     #    latest = tf.train.latest_checkpoint(FLAGS.train_dir)
     #    if not latest:
@@ -168,66 +194,80 @@ def train():
     #        sys.exit(1)
     #    print("continue", latest)
     #    saver.restore(sess, latest)
-
+    
+    saver = tf.train.Saver()
+    sv = tf.train.Supervisor(is_chief=True,
+                             logdir=FLAGS.train_dir + "/train",
+                             summary_op=None,  # Automatic summaries don"t work with placeholders.
+                             saver=saver,
+                             global_step=global_step,
+                             save_summaries_secs=30,
+                             save_model_secs=60,
+                             init_op=None,
+                             init_fn=init_fn)
     train_dataset = get_dataset(FLAGS.data_path)
     train_data_provider = train_dataset.iterate_forever(FLAGS.batch_size)
     eval_dataset = get_dataset(FLAGS.data_path, train=False)
-    while True:
-        start_time = time.time()
+    with sv.managed_session(config=config) as sess, sess.as_default():
+        tf.train.start_queue_runners(sess=sess)
 
-        #images_, labels_ = dataset.get_batch(FLAGS.batch_size, FLAGS.input_size)
-        images_, targets_ = next(train_data_provider)
+        summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
+        while True:
+            start_time = time.time()
 
-        step = sess.run(global_step)
-        i = [train_op, loss_]
+            #images_, labels_ = dataset.get_batch(FLAGS.batch_size, FLAGS.input_size)
+            images_, targets_ = next(train_data_provider)
 
-        write_summary = step % 100 and step > 1
-        if write_summary:
-            i.append(summary_op)
+            step = sess.run(global_step)
+            i = [train_op, loss_]
 
-        o = sess.run(i, {
-            images: images_,
-            labels: targets_,
-        })
+            write_summary = step % 100 and step > 1
+            if write_summary:
+                i.append(summary_op)
 
-        loss_value = o[1]
+            o = sess.run(i, {
+                images: images_,
+                labels: targets_,
+            })
 
-        duration = time.time() - start_time
+            loss_value = o[1]
 
-        assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
+            duration = time.time() - start_time
 
-        # Do evaluation
-        if step % 1000 ==0:
-            losses = []
-            for eval_images, eval_targets in eval_dataset.iterate_once(FLAGS.batch_size):
-                preds = sess.run(logits, {images: eval_images})
-                losses += [np.square(eval_targets - preds)]
-            losses = np.concatenate(losses)
-            print("Eval: shape: {}".format(losses.shape))
-            summary = tf.Summary()
-            summary.value.add(tag="eval/loss", simple_value=float(0.5 * losses.sum() / losses.shape[0]))
-            names = ["spin", "direction", "speed", "speed_change", "steering", "throttle"]
-            for i in range(len(names)):
-                summary.value.add(tag="eval/{}".format(names[i]), simple_value=float(0.5 * losses[:, i].mean()))
-            print(summary)
-            summary_writer.add_summary(summary, step)
-            #summart_writer.flush()
+            assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
+
+            # Do evaluation
+            if step % 1000 ==0:
+                losses = []
+                for eval_images, eval_targets in eval_dataset.iterate_once(FLAGS.batch_size):
+                    preds = sess.run(logits, {images: eval_images})
+                    losses += [np.square(eval_targets - preds)]
+                losses = np.concatenate(losses)
+                print("Eval: shape: {}".format(losses.shape))
+                summary = tf.Summary()
+                summary.value.add(tag="eval/loss", simple_value=float(0.5 * losses.sum() / losses.shape[0]))
+                names = ["spin", "direction", "speed", "speed_change", "steering", "throttle"]
+                for i in range(len(names)):
+                    summary.value.add(tag="eval/{}".format(names[i]), simple_value=float(0.5 * losses[:, i].mean()))
+                print(summary)
+                summary_writer.add_summary(summary, step)
+                #summart_writer.flush()
 
 
-        if step % 5 == 0:
-            examples_per_sec = FLAGS.batch_size / float(duration)
-            format_str = ('step %d, loss = %.2f (%.1f examples/sec; %.3f '
-                          'sec/batch)')
-            print(format_str % (step, loss_value, examples_per_sec, duration))
+            if step % 5 == 0:
+                examples_per_sec = FLAGS.batch_size / float(duration)
+                format_str = ('step %d, loss = %.2f (%.1f examples/sec; %.3f '
+                              'sec/batch)')
+                print(format_str % (step, loss_value, examples_per_sec, duration))
 
-        if write_summary:
-            summary_str = o[2]
-            summary_writer.add_summary(summary_str, step)
+            if write_summary:
+                summary_str = o[2]
+                summary_writer.add_summary(summary_str, step)
 
-        # Save the model checkpoint periodically.
-        if step > 1 and step % 100 == 0:
-            checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
-            saver.save(sess, checkpoint_path, global_step=global_step)
+            # Save the model checkpoint periodically.
+            if step > 1 and step % 100 == 0:
+                checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
+                saver.save(sess, checkpoint_path, global_step=global_step)
 
 
 def inference(x, is_training,
@@ -444,7 +484,7 @@ def _bn(x, is_training):
     return x
 
 
-def _fc(x, num_units_out, _sess):
+def _fc(x, num_units_out):
     num_units_in = x.get_shape()[1]
     weights_initializer = tf.truncated_normal_initializer(
         stddev=FC_WEIGHT_STDDEV)
@@ -456,7 +496,6 @@ def _fc(x, num_units_out, _sess):
     biases = _get_variable('biases',
                            shape=[num_units_out],
                            initializer=tf.zeros_initializer())
-    _sess.run(tf.variables_initializer([weights, biases]))
     x = tf.nn.xw_plus_b(x, weights, biases)
     return x
 
