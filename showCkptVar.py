@@ -1,6 +1,6 @@
 import os
 from tensorflow.python import pywrap_tensorflow
-checkpoint_path = os.path.join("/tmp/resnet_train/ResNet-L50.ckpt")
+checkpoint_path = os.path.join("./pure-model/model.ckpt-901")
 reader = pywrap_tensorflow.NewCheckpointReader(checkpoint_path)
 var_to_shape_map = reader.get_variable_to_shape_map()
 for key in var_to_shape_map:

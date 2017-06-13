@@ -53,9 +53,9 @@ class CaffeParamProvider():
 def preprocess(img):
     """Changes RGB [0,1] valued image to BGR [0,255] with mean subtracted."""
     mean_bgr = load_mean_bgr()
-    print 'mean blue', np.mean(mean_bgr[:, :, 0])
-    print 'mean green', np.mean(mean_bgr[:, :, 1])
-    print 'mean red', np.mean(mean_bgr[:, :, 2])
+    print('mean blue', np.mean(mean_bgr[:, :, 0]))
+    print('mean green', np.mean(mean_bgr[:, :, 1]))
+    print('mean red', np.mean(mean_bgr[:, :, 2]))
     out = np.copy(img) * 255.0
     out = out[:, :, [2, 1, 0]]  # swap channel from RGB to BGR
     out -= mean_bgr
@@ -71,12 +71,12 @@ def assert_almost_equal(caffe_tensor, tf_tensor):
     #    print "caffe", i,  c[:,i]
 
     if t.shape != c.shape:
-        print "t.shape", t.shape
-        print "c.shape", c.shape
+        print("t.shape", t.shape)
+        print("c.shape", c.shape)
         sys.exit(1)
 
     d = np.linalg.norm(t - c)
-    print "d", d
+    print("d", d)
     assert d < 500
 
 
@@ -131,10 +131,10 @@ def print_prob(prob):
 
     # Get top1 label
     top1 = synset[pred[0]]
-    print "Top1: ", top1
+    print("Top1: ", top1)
     # Get top5 label
     top5 = [synset[pred[i]] for i in range(5)]
-    print "Top5: ", top5
+    print("Top5: ", top5)
     return top1
 
 
@@ -313,7 +313,7 @@ def convert(graph, img, img_p, layers, save=True):
     print_prob(o[8][0])
 
     prob_dist = np.linalg.norm(caffe_model.blobs['prob'].data - o[8])
-    print 'prob_dist ', prob_dist
+    print('prob_dist ', prob_dist)
     assert prob_dist < 0.2  # XXX can this be tightened?
 
     # We've already written the metagraph to avoid a bunch of assign ops.
@@ -324,13 +324,13 @@ def convert(graph, img, img_p, layers, save=True):
 def save_graph(save_path):
     graph = tf.get_default_graph()
     graph_def = graph.as_graph_def()
-    print "graph_def byte size", graph_def.ByteSize()
+    print("graph_def byte size", graph_def.ByteSize())
     graph_def_s = graph_def.SerializeToString()
 
     with open(save_path, "wb") as f:
         f.write(graph_def_s)
 
-    print "saved model to %s" % save_path
+    print("saved model to %s" % save_path)
 
 
 def main(_):
@@ -346,7 +346,7 @@ def main(_):
         for layers in [50, 101, 152]:
             g = tf.Graph()
             with g.as_default():
-                print "CONVERT", layers
+                print("CONVERT", layers)
                 convert(g, img, img_p, layers, save=True)
 
         break
