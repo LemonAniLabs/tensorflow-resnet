@@ -1,11 +1,12 @@
 *.swp
 *.pyc
-.ipynb_checkpoints/
+.ipynb_checkpoints
 *.caffemodel
 *.tfmodel
+*.tar
 checkpoint
 ResNet-L*.ckpt
 ResNet-L*.meta
-.model/
-.weights/
-
+model/
+weights/
+pure-model/
