@@ -18,11 +18,15 @@ layers = 50
 
 img = load_image("data/100.jpg",227)
 
-sess = tf.Session()
+#sess = tf.Session()
+
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+sess = tf.Session(config=config)
 
 #filename = checkpoint_fn(layers)
 #filename = os.path.realpath(filename)
-filename = './pure-model/model.ckpt-101'
+filename = 'D:/Checkpoint/gtavResnet/model.ckpt-51001'
 
 if layers == 50:
     num_blocks = [3, 4, 6, 3]
@@ -61,4 +65,7 @@ feed_dict = {images: batch}
 
 pred = sess.run(logits, feed_dict=feed_dict)
 print(pred)
+pred = sess.run(logits, feed_dict=feed_dict)
+print(pred)
+
 #print_prob(prob[0])
