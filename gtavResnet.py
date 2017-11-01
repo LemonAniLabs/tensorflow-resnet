@@ -4,6 +4,7 @@ import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.training import moving_averages
 from gtav.data_utils import get_dataset
+from gtav.tf_data_utils import readTF
 
 import datetime
 import numpy as np
@@ -25,9 +26,11 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', './pure-model',
+tf.app.flags.DEFINE_string('train_dir', './train_log',
                            """Directory where to write event logs """
                            """and checkpoint.""")
+tf.app.flags.DEFINE_string('checkpoint_dir', './pure-model',
+                           """Directory stored pretrain model""")
 tf.app.flags.DEFINE_float('learning_rate', 0.01, "learning rate.")
 tf.app.flags.DEFINE_float(
     'end_learning_rate', 0.0001,
@@ -67,27 +70,33 @@ def initialize_uninitialized(sess):
 
 def train():
     
-    labels = tf.placeholder("float", [None, 6], name="labels")
-    images = tf.placeholder("float",
-                            [None, FLAGS.input_size, FLAGS.input_size, 3],
-                            name="images")
+#    labels = tf.placeholder("float", [None, 3], name="labels")
+#    images = tf.placeholder("float",
+#                            [None, FLAGS.input_size, FLAGS.input_size, 3],
+#                            name="images")
+    tfrecord = '/mnt/s1/kr7830/Data/TX2/tfRecords/RC_Car_train.tfrecords'
+    img, targets = readTF([tfrecord])
+    images, labels = tf.train.shuffle_batch([img, targets],
+                                                    batch_size=FLAGS.batch_size, capacity=2000,
+                                                    min_after_dequeue=1000
+                                                   )
     """ TODO: IMAGE PREPROCESSING """
     tf.summary.image('images_ori', images)
 
     with tf.variable_scope("") as vs:
         _x = inference(images,
-                           num_classes=6,
+                           num_classes=3,
                            is_training=True,
                            preprocess=False,
                            bottleneck=True,
                            num_blocks=[3, 4, 6, 3])
-        vs.reuse_variables()
-        _eval = inference(images,
-                           num_classes=6,
-                           is_training=False,
-                           preprocess=False,
-                           bottleneck=True,
-                           num_blocks=[3, 4, 6, 3])
+#        vs.reuse_variables()
+#        _eval = inference(images,
+#                           num_classes=3,
+#                           is_training=False,
+#                           preprocess=False,
+#                           bottleneck=True,
+#                           num_blocks=[3, 4, 6, 3])
 
     global_step = tf.get_variable('global_step', [],
                                   initializer=tf.constant_initializer(0),
@@ -95,7 +104,7 @@ def train():
     # post-net
     x = tf.reduce_mean(_x, axis=[1, 2], name="avg_pool")
     with tf.variable_scope('fc'):
-        logits = _fc(x, num_units_out=6)
+        logits = _fc(x, num_units_out=3)
 
     cprint('Construct Network Succes', 'yellow')
     cprint('Label shape' + str(labels), 'red')
@@ -153,7 +162,8 @@ def train():
     def init_fn(ses):
         print("Initializing parameters.")
         ses.run(init_op)
-        resnet_saver.restore(ses, "./pure-model/ResNet-L50.ckpt")
+        pre_checkpoint_path = os.path.join(FLAGS.checkpoint_dir, 'ResNet-L50.ckpt')
+        resnet_saver.restore(ses, pre_checkpoint_path)
 
     saver = tf.train.Saver()
     sv = tf.train.Supervisor(is_chief=True,
@@ -168,31 +178,23 @@ def train():
 
 
     config=tf.ConfigProto(log_device_placement=False)
-    #sess.run(tf.variables_initializer([global_step, loss_avg]))
-    #guarantee_initialized_variables(sess)
-    #initialize_uninitialized(sess)
-    #sess.run(init)
-    #tf.train.start_queue_runners(sess=sess)
+
+################ HDF5 #########################################################
+#    train_dataset = get_dataset(FLAGS.data_path)
+#    train_data_provider = train_dataset.iterate_forever(FLAGS.batch_size)
+#    eval_dataset = get_dataset(FLAGS.data_path, train=False)
+###############################################################################
 
 
-    #if FLAGS.__getattr__('continue'):
-    #    latest = tf.train.latest_checkpoint(FLAGS.train_dir)
-    #    if not latest:
-    #        print("No checkpoint to continue from in", FLAGS.train_dir)
-    #        sys.exit(1)
-    #    print("continue", latest)
-    #    saver.restore(sess, latest)
 
-    train_dataset = get_dataset(FLAGS.data_path)
-    train_data_provider = train_dataset.iterate_forever(FLAGS.batch_size)
-    eval_dataset = get_dataset(FLAGS.data_path, train=False)
     with sv.managed_session(config=config) as sess, sess.as_default():
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess, coord)
         summary_writer = tf.summary.FileWriter(FLAGS.train_dir, sess.graph)
         while True:
             start_time = time.time()
 
-            #images_, labels_ = dataset.get_batch(FLAGS.batch_size, FLAGS.input_size)
-            images_, targets_ = next(train_data_provider)
+#            images_, targets_ = img_batch, label_batch 
 
             step = sess.run(global_step)
             i = [train_op, loss_]
@@ -201,10 +203,11 @@ def train():
             if write_summary:
                 i.append(summary_op)
 
-            o = sess.run(i, {
-                images: images_,
-                labels: targets_,
-            })
+            #o = sess.run(i, {
+            #    images: images_,
+            #    labels: targets_,
+            #})
+            o = sess.run(i)
 
             loss_value = o[1]
 
@@ -222,7 +225,7 @@ def train():
                 print("Eval: shape: {}".format(losses.shape))
                 summary = tf.Summary()
                 summary.value.add(tag="eval/loss", simple_value=float(0.5 * losses.sum() / losses.shape[0]))
-                names = ["spin", "direction", "speed", "speed_change", "steering", "throttle"]
+                names = ["steering", "throttle, ""speed"]
                 for i in range(len(names)):
                     summary.value.add(tag="eval/{}".format(names[i]), simple_value=float(0.5 * losses[:, i].mean()))
                 print(summary)
@@ -230,7 +233,7 @@ def train():
                 #summart_writer.flush()
 
 
-            if step % 5 == 0:
+            #if step % 5 == 0:
                 examples_per_sec = FLAGS.batch_size / float(duration)
                 format_str = ('step %d, loss = %.2f (%.1f examples/sec; %.3f '
                               'sec/batch)')
@@ -241,9 +244,11 @@ def train():
                 summary_writer.add_summary(summary_str, step)
 
             # Save the model checkpoint periodically.
-            if step > 1 and step % 100 == 0:
-                checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
-                saver.save(sess, checkpoint_path, global_step=global_step)
+#            if step > 1 and step % 100 == 0:
+#                checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
+#                saver.save(sess, checkpoint_path, global_step=global_step)
+        coord.request_stop()
+        coord.join(threads)
 
 
 def inference(x, is_training,
