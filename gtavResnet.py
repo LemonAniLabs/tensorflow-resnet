@@ -74,9 +74,15 @@ def train():
 #    images = tf.placeholder("float",
 #                            [None, FLAGS.input_size, FLAGS.input_size, 3],
 #                            name="images")
-    tfrecord = '/mnt/s1/kr7830/Data/TX2/tfRecords/RC_Car_train.tfrecords'
-    img, targets = readTF([tfrecord])
+    tfrecord_train = '/mnt/s1/kr7830/Data/TX2/tfRecords/train/MiniCar_train_1.tfrecords'
+    tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_Val.tfrecords'
+    img, targets = readTF([tfrecord_train])
     images, labels = tf.train.shuffle_batch([img, targets],
+                                                    batch_size=FLAGS.batch_size, capacity=2000,
+                                                    min_after_dequeue=1000
+                                                   )
+    eval_img, eval_targets = readTF([tfrecord_val])
+    eval_images, eval_labels = tf.train.shuffle_batch([eval_img, eval_targets],
                                                     batch_size=FLAGS.batch_size, capacity=2000,
                                                     min_after_dequeue=1000
                                                    )
@@ -90,21 +96,18 @@ def train():
                            preprocess=False,
                            bottleneck=True,
                            num_blocks=[3, 4, 6, 3])
-#        vs.reuse_variables()
-#        _eval = inference(images,
-#                           num_classes=3,
-#                           is_training=False,
-#                           preprocess=False,
-#                           bottleneck=True,
-#                           num_blocks=[3, 4, 6, 3])
+        # post-net
+        x = tf.reduce_mean(_x, axis=[1, 2], name="avg_pool")
+        with tf.variable_scope('fc'):
+            logits = _fc(x, num_units_out=3)
+
+        vs.reuse_variables()
+        eval_logits = logits
 
     global_step = tf.get_variable('global_step', [],
                                   initializer=tf.constant_initializer(0),
                                   trainable=False)
-    # post-net
-    x = tf.reduce_mean(_x, axis=[1, 2], name="avg_pool")
-    with tf.variable_scope('fc'):
-        logits = _fc(x, num_units_out=3)
+    
 
     cprint('Construct Network Succes', 'yellow')
     cprint('Label shape' + str(labels), 'red')
@@ -218,19 +221,20 @@ def train():
             # Do evaluation
             if step % 1000 ==0:
                 losses = []
-                for eval_images, eval_targets in eval_dataset.iterate_once(FLAGS.batch_size):
-                    preds = sess.run(logits, {images: eval_images})
-                    losses += [np.square(eval_targets - preds)]
+                for i in range(FLAGS.batch_size):
+                    preds, targets = sess.run([eval_logits, eval_labels])
+                    losses += [np.square(targets - preds)]
                 losses = np.concatenate(losses)
                 print("Eval: shape: {}".format(losses.shape))
                 summary = tf.Summary()
+#                summary = summary_op
                 summary.value.add(tag="eval/loss", simple_value=float(0.5 * losses.sum() / losses.shape[0]))
                 names = ["steering", "throttle, ""speed"]
                 for i in range(len(names)):
                     summary.value.add(tag="eval/{}".format(names[i]), simple_value=float(0.5 * losses[:, i].mean()))
                 print(summary)
                 summary_writer.add_summary(summary, step)
-                #summart_writer.flush()
+                #summary_writer.flush()
 
 
             #if step % 5 == 0:
