@@ -46,7 +46,7 @@ tf.app.flags.DEFINE_float(
     'The decay to use for the moving average.'
     'If left as None, then moving averages are not used.')
 tf.app.flags.DEFINE_integer('batch_size', 64, "batch size")
-tf.app.flags.DEFINE_integer('input_size', 227, "input image size")
+tf.app.flags.DEFINE_integer('input_size', 224, "input image size")
 tf.app.flags.DEFINE_boolean('continue', False,
                             'resume from latest saved state')
 
@@ -74,6 +74,7 @@ def train():
 #    images = tf.placeholder("float",
 #                            [None, FLAGS.input_size, FLAGS.input_size, 3],
 #                            name="images")
+
     tfrecord_train = '/mnt/s1/kr7830/Data/TX2/tfRecords/train/MiniCar_train_1.tfrecords'
     tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_Val.tfrecords'
     img, targets = readTF([tfrecord_train])
@@ -102,7 +103,16 @@ def train():
             logits = _fc(x, num_units_out=3)
 
         vs.reuse_variables()
-        eval_logits = logits
+
+        _eval_x = inference(eval_images,
+                                num_classes=3,
+                                is_training=False,
+                                preprocess=False,
+                                bottleneck=True,
+                                num_blocks=[3, 4, 6, 3])
+        eval_x = tf.reduce_mean(_eval_x, axis=[1, 2], name="avg_pool")
+        with tf.variable_scope('fc'):
+            eval_logits = _fc(eval_x, num_units_out=3)
 
     global_step = tf.get_variable('global_step', [],
                                   initializer=tf.constant_initializer(0),
@@ -112,8 +122,9 @@ def train():
     cprint('Construct Network Succes', 'yellow')
     cprint('Label shape' + str(labels), 'red')
     cprint('Logits shape' + str(logits), 'red')
+    
     loss_ = new_loss(logits, labels, tf.to_float(tf.shape(images)[0]))
-    cprint('loss -> ' + str(loss_), 'red')
+
     # loss_avg
     ema = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
     tf.add_to_collection(UPDATE_OPS_COLLECTION, ema.apply([loss_]))
@@ -145,8 +156,10 @@ def train():
     batchnorm_updates = tf.get_collection(UPDATE_OPS_COLLECTION)
     batchnorm_updates_op = tf.group(*batchnorm_updates)
     train_op = tf.group(apply_gradient_op, batchnorm_updates_op)
-    summary_op = tf.summary.merge_all()
     
+    #SUMMARY
+    summary_op = tf.summary.merge_all()
+
     init_op = tf.initialize_all_variables()
     pretrained_var_map = {}
     for v in tf.trainable_variables():
