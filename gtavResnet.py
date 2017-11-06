@@ -75,8 +75,8 @@ def train():
 #                            [None, FLAGS.input_size, FLAGS.input_size, 3],
 #                            name="images")
 
-    tfrecord_train = '/mnt/s1/kr7830/Data/TX2/tfRecords/train/MiniCar_train_1.tfrecords'
-    tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_Val.tfrecords'
+    tfrecord_train = '/mnt/s1/kr7830/Data/TX2/tfRecords/train/MiniCar_train_2.tfrecords'
+    tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_val_2.tfrecords'
     img, targets = readTF([tfrecord_train])
     images, labels = tf.train.shuffle_batch([img, targets],
                                                     batch_size=FLAGS.batch_size, capacity=2000,
