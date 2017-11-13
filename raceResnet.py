@@ -3,6 +3,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.training import moving_averages
 from gtav.data_utils import get_dataset
 from gtav.tf_data_utils import readTF
+import PilotNet
 
 import datetime
 import numpy as np
@@ -26,7 +27,7 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', './train_log_racecar_2617',
+tf.app.flags.DEFINE_string('train_dir', './train_log_racecar_2622',
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_string('checkpoint_dir', './pure-model',
@@ -46,6 +47,7 @@ tf.app.flags.DEFINE_float(
     'The decay to use for the moving average.'
     'If left as None, then moving averages are not used.')
 tf.app.flags.DEFINE_integer('batch_size', 64, "batch size")
+tf.app.flags.DEFINE_string('model', 'PilotNet', "batch size")
 tf.app.flags.DEFINE_integer('input_size', 224, "input image size")
 tf.app.flags.DEFINE_boolean('continue', False,
                             'resume from latest saved state')
@@ -92,21 +94,24 @@ def train():
     tf.summary.image('images', images)
 
     with tf.variable_scope("") as vs:
-        logits = inference(images,
-                           num_classes=1,
-                           is_training=True,
-                           preprocess=False,
-                           bottleneck=True,
-                           num_blocks=[3, 4, 6, 3])
+        if FLAGS.model == 'PilotNet':
+            logits = PilotNet.inference(images)
+        else:
+            logits = inference(images,
+                               num_classes=1,
+                               is_training=True,
+                               preprocess=False,
+                               bottleneck=True,
+                               num_blocks=[3, 4, 6, 3])
 
-#        vs.reuse_variables()
+#            vs.reuse_variables()
 #
-#        eval_logits = inference(eval_images,
-#                                num_classes=1,
-#                                is_training=False,
-#                                preprocess=False,
-#                                bottleneck=True,
-#                                num_blocks=[3, 4, 6, 3])
+#            eval_logits = inference(eval_images,
+#                                    num_classes=1,
+#                                    is_training=False,
+#                                    preprocess=False,
+#                                    bottleneck=True,
+#                                    num_blocks=[3, 4, 6, 3])
 
     global_step = tf.get_variable('global_step', [],
                                   initializer=tf.constant_initializer(0),
