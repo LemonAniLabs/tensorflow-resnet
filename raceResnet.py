@@ -11,6 +11,8 @@ import sys
 import time
 from termcolor import colored, cprint
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+
 MOVING_AVERAGE_DECAY = 0.9997
 BN_DECAY = MOVING_AVERAGE_DECAY
 BN_EPSILON = 0.001
@@ -24,12 +26,12 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', './train_log2',
+tf.app.flags.DEFINE_string('train_dir', './train_log_racecar_2617',
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_string('checkpoint_dir', './pure-model',
                            """Directory stored pretrain model""")
-tf.app.flags.DEFINE_float('learning_rate', 0.01, "learning rate.")
+tf.app.flags.DEFINE_float('learning_rate', 0.001, "learning rate.")
 tf.app.flags.DEFINE_float(
     'end_learning_rate', 0.0001,
     'The minimal end learning rate used by a polynomial decay learning rate.')
@@ -66,6 +68,7 @@ def initialize_uninitialized(sess):
     if len(not_initialized_vars):
         sess.run(tf.variables_initializer(not_initialized_vars))
 
+model_pareto=[]
 def train():
     
 #    labels = tf.placeholder("float", [None, 3], name="labels")
@@ -73,44 +76,37 @@ def train():
 #                            [None, FLAGS.input_size, FLAGS.input_size, 3],
 #                            name="images")
 
-    tfrecord_train = '/mnt/s1/kr7830/Data/TX2/tfRecords/train/MiniCar_train_2.tfrecords'
-    tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_val_2.tfrecords'
-    img, targets = readTF([tfrecord_train])
+    tfrecord_train = '/mnt/s1/kr7830/Data/TX2/tfRecords/train/MiniCar_train_2617_1.tfrecords'
+    tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_val_4.tfrecords'
+    img, targets = readTF([tfrecord_train], is_training=True)
     images, labels = tf.train.shuffle_batch([img, targets],
-                                                    batch_size=FLAGS.batch_size, capacity=2000,
-                                                    min_after_dequeue=1000
+                                        batch_size=FLAGS.batch_size, capacity=2000,
+                                        min_after_dequeue=1000
                                                    )
-    eval_img, eval_targets = readTF([tfrecord_val])
-    eval_images, eval_labels = tf.train.shuffle_batch([eval_img, eval_targets],
-                                                    batch_size=FLAGS.batch_size, capacity=2000,
-                                                    min_after_dequeue=1000
-                                                   )
+#    eval_img, eval_targets = readTF([tfrecord_val])
+#    eval_images, eval_labels = tf.train.shuffle_batch([eval_img, eval_targets],
+#                                                    batch_size=FLAGS.batch_size, capacity=2000,
+#                                                    min_after_dequeue=1000
+#                                                   )
     """ TODO: IMAGE PREPROCESSING """
-    tf.summary.image('images_ori', images)
+    tf.summary.image('images', images)
 
     with tf.variable_scope("") as vs:
-        _x = inference(images,
-                           num_classes=3,
+        logits = inference(images,
+                           num_classes=1,
                            is_training=True,
                            preprocess=False,
                            bottleneck=True,
                            num_blocks=[3, 4, 6, 3])
-        # post-net
-        x = tf.reduce_mean(_x, axis=[1, 2], name="avg_pool")
-        with tf.variable_scope('fc'):
-            logits = _fc(x, num_units_out=3)
 
-        vs.reuse_variables()
-
-        _eval_x = inference(eval_images,
-                                num_classes=3,
-                                is_training=False,
-                                preprocess=False,
-                                bottleneck=True,
-                                num_blocks=[3, 4, 6, 3])
-        eval_x = tf.reduce_mean(_eval_x, axis=[1, 2], name="avg_pool")
-        with tf.variable_scope('fc'):
-            eval_logits = _fc(eval_x, num_units_out=3)
+#        vs.reuse_variables()
+#
+#        eval_logits = inference(eval_images,
+#                                num_classes=1,
+#                                is_training=False,
+#                                preprocess=False,
+#                                bottleneck=True,
+#                                num_blocks=[3, 4, 6, 3])
 
     global_step = tf.get_variable('global_step', [],
                                   initializer=tf.constant_initializer(0),
@@ -121,16 +117,16 @@ def train():
     cprint('Label shape' + str(labels), 'red')
     cprint('Logits shape' + str(logits), 'red')
     
-    loss_ = new_loss(logits, labels, tf.to_float(tf.shape(images)[0]))
+    total_loss, l2_norn, lr_loss = new_loss(logits, labels, tf.to_float(tf.shape(images)[0]))
 
     # loss_avg
     ema = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
-    tf.add_to_collection(UPDATE_OPS_COLLECTION, ema.apply([loss_]))
-    loss_avg = ema.average(loss_)
+    tf.add_to_collection(UPDATE_OPS_COLLECTION, ema.apply([total_loss]))
+    loss_avg = ema.average(total_loss)
     tf.summary.scalar('loss_avg', loss_avg)
     
     #Define Learning Rate Decay Function
-    num_samples_per_epoch = 490 * 1000
+    num_samples_per_epoch = 1500199
     decay_steps = int(num_samples_per_epoch / FLAGS.batch_size * FLAGS.num_epochs_per_decay)
     learning_rate_ = tf.train.exponential_decay(FLAGS.learning_rate,
                                       global_step,
@@ -141,8 +137,9 @@ def train():
     tf.summary.scalar('learning_rate', learning_rate_)
 
 
-    opt = tf.train.MomentumOptimizer(learning_rate_, MOMENTUM)
-    grads = opt.compute_gradients(loss_)
+#    opt = tf.train.MomentumOptimizer(learning_rate_, MOMENTUM)
+    opt = tf.train.AdamOptimizer(learning_rate_)
+    grads = opt.compute_gradients(total_loss)
     for grad, var in grads:
         if grad is not None:
             tf.summary.histogram(var.op.name + '/gradients', grad)
@@ -211,7 +208,7 @@ def train():
 #            images_, targets_ = img_batch, label_batch 
 
             step = sess.run(global_step)
-            i = [train_op, loss_]
+            i = [train_op, total_loss, l2_norn, lr_loss]
 
             write_summary = step % 100 and step > 1
             if write_summary:
@@ -229,34 +226,37 @@ def train():
 
             assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 
-            # Do evaluation
-            if step % 1000 ==0:
-                losses = []
-                for i in range(FLAGS.batch_size):
-                    preds, targets = sess.run([eval_logits, eval_labels])
-                    losses += [np.square(targets - preds)]
-                losses = np.concatenate(losses)
-                print("Eval: shape: {}".format(losses.shape))
-                summary = tf.Summary()
-#                summary = summary_op
-                summary.value.add(tag="eval/loss", simple_value=float(0.5 * losses.sum() / losses.shape[0]))
-                names = ["steering", "throttle, ""speed"]
-                for i in range(len(names)):
-                    summary.value.add(tag="eval/{}".format(names[i]), simple_value=float(0.5 * losses[:, i].mean()))
-                print(summary)
-                summary_writer.add_summary(summary, step)
-                #summary_writer.flush()
+#            # Do evaluation
+#            if step>0 and step % 100 ==0:
+#                losses = []
+#                for i in range(FLAGS.batch_size):
+#                    preds, targets = sess.run([eval_logits, eval_labels])
+#                    losses += [np.square(targets - preds)]
+#                losses = np.concatenate(losses)
+#                print("Eval: shape: {}".format(losses.shape))
+#                summary = tf.Summary()
+##                summary = summary_op
+#                summary.value.add(tag="eval/loss", simple_value=float(0.5 * losses.sum() / losses.shape[0]))
+##                names = ["steering", "throttle, ""speed"]
+#                names = ["steering"]
+#                for i in range(len(names)):
+#                    summary.value.add(tag="eval/{}".format(names[i]), simple_value=float(0.5 * losses[:, i].mean()))
+#                print(summary)
+#                summary_writer.add_summary(summary, step)
+#                #summary_writer.flush()
 
 
-            #if step % 5 == 0:
+            if step % 100 == 0:
                 examples_per_sec = FLAGS.batch_size / float(duration)
-                format_str = ('step %d, loss = %.2f (%.1f examples/sec; %.3f '
+                format_str = ('step %d, loss = %.6f (%.1f examples/sec; %.3f '
                               'sec/batch)')
                 print(format_str % (step, loss_value, examples_per_sec, duration))
 
             if write_summary:
-                summary_str = o[2]
+                summary_str = o[4]
                 summary_writer.add_summary(summary_str, step)
+
+            v_l2norn, v_lrloss = o[2], o[3]
 
             # Save the model checkpoint periodically.
 #            if step > 1 and step % 100 == 0:
@@ -264,6 +264,24 @@ def train():
 #                saver.save(sess, checkpoint_path, global_step=global_step)
         coord.request_stop()
         coord.join(threads)
+
+#def keepModel(new_l2norn, new_lrloss):
+#    
+#    if len(model_pareto)==0:
+#        model_pareto.append((global_step, new_l2norn, new_lrloss))
+#        return
+#    else:
+#        keep_model=[]
+#        for aModel in model_pareto:
+#            old_step, old_l2norn, old_lrloss = aModel
+#            if new_lrloss >= old_lrloss and  new_l2norn >= old_l2norn:
+#                keep_model.append(aModel)
+#
+#
+#        for aModel in model_pareto:
+#            old_step, old_l2norn, old_lrloss = aModel
+#            if new_lrloss < old_lrloss and  new_l2norn < old_l2norn:
+#
 
 
 def inference(x, is_training,
@@ -297,10 +315,14 @@ def inference(x, is_training,
         x = stack(x, num_blocks[2], 256, bottleneck, is_training, stride=2)
 
     with tf.variable_scope('scale5'):
-        _x = stack(x, num_blocks[3], 512, bottleneck, is_training, stride=2)
+        x = stack(x, num_blocks[3], 512, bottleneck, is_training, stride=2)
 
+    # post-net
+    x = tf.reduce_mean(x, axis=[1, 2], name="avg_pool")
+    with tf.variable_scope('fc'):
+        logits = _fc(x, num_units_out=1)
 
-    return _x
+    return logits
 
 
 # This is what they use for CIFAR-10 and 100.
@@ -355,16 +377,11 @@ def new_loss(logits, labels, x_shape):
     loss_ = 0.5 * tf.reduce_sum(tf.square(logits - labels)) / x_shape
     tf.summary.scalar("model/loss", loss_)
     tf.summary.scalar("model/l2_norm", l2_norm)
-    total_loss = loss_ + 0.0005 * l2_norm
-    #cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
-    #cross_entropy_mean = tf.reduce_mean(cross_entropy)
- 
-    #regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+    total_loss = loss_ + 5e-8 * l2_norm
 
-    #loss_ = tf.add_n([cross_entropy_mean] + regularization_losses)
     tf.summary.scalar('model/total_loss', total_loss)
 
-    return total_loss
+    return total_loss, l2_norm, loss_
 
 def loss(logits, labels):
     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)

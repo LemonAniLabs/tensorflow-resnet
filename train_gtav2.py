@@ -1,5 +1,3 @@
-import skimage.io  # bug. need to import this before tensorflow
-import skimage.transform  # bug. need to import this before tensorflow
 import gtavResnet
 import tensorflow as tf
 import time
@@ -10,7 +8,6 @@ import numpy as np
 from termcolor import colored, cprint
 from gtav.data_utils import get_dataset
 
-from synset import *
 from image_processing import image_preprocessing
 
 FLAGS = tf.app.flags.FLAGS

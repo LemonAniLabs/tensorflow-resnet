@@ -1,7 +1,8 @@
 import tensorflow as tf
 import numpy as np
+import image_processing as img_pro
 
-def readTF(filename):
+def readTF(filename, is_training=False):
 
     filename_queue = tf.train.string_input_producer(filename)
     reader = tf.TFRecordReader()
@@ -18,12 +19,17 @@ def readTF(filename):
     image.set_shape([270, 480, 3])
     image = tf.image.convert_image_dtype(image, dtype=tf.float32)
     image = tf.image.resize_images(image, size=[224,224])
+
+    if is_training:
+        image = img_pro.distort_color(image)
+        print(image.shape)
     
     steering = features['car_info/steering']
     throttle = features['car_info/throttle']
     speed = features['car_info/speed']
 
-    return image, [steering, throttle, speed]
+#    return image, [steering, throttle, speed]
+    return image, [steering]
 
 def load_batch(dataset, batch_size=32, height=224, width=224, is_training=False):
     """Loads a single batch of data.

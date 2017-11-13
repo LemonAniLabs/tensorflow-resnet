@@ -10,4 +10,10 @@ ResNet-L*.meta
 model/
 weights/
 pure-model/
+
 train_log/
+train_log2/
+train_log_racecar/
+train_log_racecar_2617/
+
+
