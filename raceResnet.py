@@ -76,9 +76,11 @@ def train():
 #                            [None, FLAGS.input_size, FLAGS.input_size, 3],
 #                            name="images")
 
-    tfrecord_train = '/mnt/s1/kr7830/Data/TX2/tfRecords/train/MiniCar_train_2617_1.tfrecords'
+    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/train/26XX/MiniCar_train_2617_1.tfrecords',
+    '/mnt/s1/kr7830/Data/TX2/tfRecords/train/26XX/MiniCar_train_2617_3.tfrecords',
+    '/mnt/s1/kr7830/Data/TX2/tfRecords/train/26XX/MiniCar_train_262223_1.tfrecords']
     tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_val_4.tfrecords'
-    img, targets = readTF([tfrecord_train], is_training=True)
+    img, targets = readTF(tfrecord_train, is_training=True)
     images, labels = tf.train.shuffle_batch([img, targets],
                                         batch_size=FLAGS.batch_size, capacity=2000,
                                         min_after_dequeue=1000
@@ -126,7 +128,7 @@ def train():
     tf.summary.scalar('loss_avg', loss_avg)
     
     #Define Learning Rate Decay Function
-    num_samples_per_epoch = 1500199
+    num_samples_per_epoch = 217872
     decay_steps = int(num_samples_per_epoch / FLAGS.batch_size * FLAGS.num_epochs_per_decay)
     learning_rate_ = tf.train.exponential_decay(FLAGS.learning_rate,
                                       global_step,
@@ -156,25 +158,25 @@ def train():
     summary_op = tf.summary.merge_all()
 
     init_op = tf.initialize_all_variables()
-    pretrained_var_map = {}
-    for v in tf.trainable_variables():
-        found = False
-        for bad_layer in ["fc"]:
-            if bad_layer in v.name:
-                found = True
-                cprint('Find layer ->' + bad_layer, 'red')
-        if found:
-            continue
-
-        pretrained_var_map[v.op.name[:]] = v
-        cprint(v.op.name[:],'yellow')
-        print(v.op.name, v.get_shape())
-    resnet_saver = tf.train.Saver(pretrained_var_map)
+#    pretrained_var_map = {}
+#    for v in tf.trainable_variables():
+#        found = False
+#        for bad_layer in ["fc"]:
+#            if bad_layer in v.name:
+#                found = True
+#                cprint('Find layer ->' + bad_layer, 'red')
+#        if found:
+#            continue
+#
+#        pretrained_var_map[v.op.name[:]] = v
+#        cprint(v.op.name[:],'yellow')
+#        print(v.op.name, v.get_shape())
+#    resnet_saver = tf.train.Saver(pretrained_var_map)
     def init_fn(ses):
         print("Initializing parameters.")
         ses.run(init_op)
-        pre_checkpoint_path = os.path.join(FLAGS.checkpoint_dir, 'ResNet-L50.ckpt')
-        resnet_saver.restore(ses, pre_checkpoint_path)
+#        pre_checkpoint_path = os.path.join(FLAGS.checkpoint_dir, 'ResNet-L50.ckpt')
+#        resnet_saver.restore(ses, pre_checkpoint_path)
 
     saver = tf.train.Saver()
     sv = tf.train.Supervisor(is_chief=True,
