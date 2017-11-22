@@ -14,6 +14,7 @@ def conv2d(x, W, stride):
 
 #x = tf.placeholder(tf.float32, shape=[None, 66, 200, 3])
 #y_ = tf.placeholder(tf.float32, shape=[None, 1])
+keep_prob = tf.placeholder(tf.float32)
 
 def inference(x):
     x_image = x
@@ -60,7 +61,6 @@ def inference(x):
     h_conv5_flat = tf.reshape(h_conv5, [-1, 1152])
     h_fc1 = tf.nn.relu(tf.matmul(h_conv5_flat, W_fc1) + b_fc1)
     
-    keep_prob = tf.placeholder(tf.float32)
     h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
     
     print('h_fc1_drop : '+str(h_fc1_drop))

@@ -27,7 +27,7 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', './train_log_racecar_2622',
+tf.app.flags.DEFINE_string('train_dir', './train_log_pilotnet',
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_string('checkpoint_dir', './pure-model',
@@ -47,7 +47,7 @@ tf.app.flags.DEFINE_float(
     'The decay to use for the moving average.'
     'If left as None, then moving averages are not used.')
 tf.app.flags.DEFINE_integer('batch_size', 64, "batch size")
-tf.app.flags.DEFINE_string('model', 'PilotNet', "batch size")
+tf.app.flags.DEFINE_string('model', 'PilotNet', "model name")
 tf.app.flags.DEFINE_integer('input_size', 224, "input image size")
 tf.app.flags.DEFINE_boolean('continue', False,
                             'resume from latest saved state')
@@ -78,7 +78,9 @@ def train():
 #                            [None, FLAGS.input_size, FLAGS.input_size, 3],
 #                            name="images")
 
-    tfrecord_train = '/mnt/s1/kr7830/Data/TX2/tfRecords/train/MiniCar_train_2617_1.tfrecords'
+    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train_pilot_2617.tfrecords',
+                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train_pilot_2617_2.tfrecords',
+                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train_pilot_262223.tfrecords']
     tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_val_4.tfrecords'
     img, targets = readTF([tfrecord_train], is_training=True)
     images, labels = tf.train.shuffle_batch([img, targets],
@@ -131,7 +133,7 @@ def train():
     tf.summary.scalar('loss_avg', loss_avg)
     
     #Define Learning Rate Decay Function
-    num_samples_per_epoch = 1500199
+    num_samples_per_epoch = 217872
     decay_steps = int(num_samples_per_epoch / FLAGS.batch_size * FLAGS.num_epochs_per_decay)
     learning_rate_ = tf.train.exponential_decay(FLAGS.learning_rate,
                                       global_step,
@@ -161,25 +163,25 @@ def train():
     summary_op = tf.summary.merge_all()
 
     init_op = tf.initialize_all_variables()
-    pretrained_var_map = {}
-    for v in tf.trainable_variables():
-        found = False
-        for bad_layer in ["fc"]:
-            if bad_layer in v.name:
-                found = True
-                cprint('Find layer ->' + bad_layer, 'red')
-        if found:
-            continue
-
-        pretrained_var_map[v.op.name[:]] = v
-        cprint(v.op.name[:],'yellow')
-        print(v.op.name, v.get_shape())
-    resnet_saver = tf.train.Saver(pretrained_var_map)
+#    pretrained_var_map = {}
+#    for v in tf.trainable_variables():
+#        found = False
+#        for bad_layer in ["fc"]:
+#            if bad_layer in v.name:
+#                found = True
+#                cprint('Find layer ->' + bad_layer, 'red')
+#        if found:
+#            continue
+#
+#        pretrained_var_map[v.op.name[:]] = v
+#        cprint(v.op.name[:],'yellow')
+#        print(v.op.name, v.get_shape())
+#    resnet_saver = tf.train.Saver(pretrained_var_map)
     def init_fn(ses):
         print("Initializing parameters.")
         ses.run(init_op)
-        pre_checkpoint_path = os.path.join(FLAGS.checkpoint_dir, 'ResNet-L50.ckpt')
-        resnet_saver.restore(ses, pre_checkpoint_path)
+#        pre_checkpoint_path = os.path.join(FLAGS.checkpoint_dir, 'ResNet-L50.ckpt')
+#        resnet_saver.restore(ses, pre_checkpoint_path)
 
     saver = tf.train.Saver()
     sv = tf.train.Supervisor(is_chief=True,
@@ -223,7 +225,7 @@ def train():
             #    images: images_,
             #    labels: targets_,
             #})
-            o = sess.run(i)
+            o = sess.run(i, feed_dict={PilotNet.keep_prob: 1.0})
 
             loss_value = o[1]
 

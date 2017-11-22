@@ -16,9 +16,10 @@ def readTF(filename, is_training=False):
                                        })
     en_image = features['image/encoded']
     image = tf.image.decode_jpeg(en_image,3)
-    image.set_shape([270, 480, 3])
+    image.set_shape([66, 200, 3])
     image = tf.image.convert_image_dtype(image, dtype=tf.float32)
-    image = tf.image.resize_images(image, size=[224,224])
+#    image = tf.image.crop_to_bounding_box(image, 100, 0, 66, 200)
+#    image = tf.image.resize_images(image, size=[66,200])
 
     if is_training:
         image = img_pro.distort_color(image)
