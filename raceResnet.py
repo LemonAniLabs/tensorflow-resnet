@@ -27,7 +27,7 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', './train_log_pilotnet',
+tf.app.flags.DEFINE_string('train_dir', './train_log_pilotnet_2',
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_string('checkpoint_dir', './pure-model',
@@ -78,11 +78,11 @@ def train():
 #                            [None, FLAGS.input_size, FLAGS.input_size, 3],
 #                            name="images")
 
-    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train_pilot_2617.tfrecords',
-                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train_pilot_2617_2.tfrecords',
-                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train_pilot_262223.tfrecords']
+    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617.tfrecords',
+                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617_2.tfrecords',
+                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_262223.tfrecords']
     tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_val_4.tfrecords'
-    img, targets = readTF([tfrecord_train], is_training=True)
+    img, targets = readTF(tfrecord_train, is_training=True)
     images, labels = tf.train.shuffle_batch([img, targets],
                                         batch_size=FLAGS.batch_size, capacity=2000,
                                         min_after_dequeue=1000
@@ -385,6 +385,7 @@ def new_loss(logits, labels, x_shape):
     tf.summary.scalar("model/loss", loss_)
     tf.summary.scalar("model/l2_norm", l2_norm)
     total_loss = loss_ + 5e-8 * l2_norm
+#    total_loss = loss_
 
     tf.summary.scalar('model/total_loss', total_loss)
 

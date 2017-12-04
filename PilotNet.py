@@ -95,7 +95,7 @@ def inference(x):
     W_fc5 = weight_variable([10, 1])
     b_fc5 = bias_variable([1])
     
-    logits = tf.multiply(tf.atan(tf.matmul(h_fc4_drop, W_fc5) + b_fc5), 2) #scale the atan output
+    logits = tf.matmul(h_fc4_drop, W_fc5) + b_fc5
     #logits = tf.matmul(h_fc4_drop, W_fc5) + b_fc5
     print("logits shape is ")
     print(logits)
