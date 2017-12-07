@@ -29,7 +29,6 @@ def readTF(filename, is_training=False):
     throttle = features['car_info/throttle']
     speed = features['car_info/speed']
 
-#    return image, [steering, throttle, speed]
     return image, [steering]
 
 def load_batch(dataset, batch_size=32, height=224, width=224, is_training=False):

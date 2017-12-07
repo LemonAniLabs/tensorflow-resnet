@@ -1,4 +1,5 @@
-import raceResnet
+#import raceResnet
+import racePilotNet
 import tensorflow as tf
 import time
 import os
@@ -11,7 +12,7 @@ from gtav.data_utils import get_dataset
 from image_processing import image_preprocessing
 
 def main(_):
-    raceResnet.train()
+    racePilotNet.train()
 
 
 if __name__ == '__main__':
