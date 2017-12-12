@@ -27,12 +27,12 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', './train_log/pilotnet_v3',
+tf.app.flags.DEFINE_string('train_dir', './train_log/pilotnet_v4',
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_string('checkpoint_dir', './pure-model',
                            """Directory stored pretrain model""")
-tf.app.flags.DEFINE_float('learning_rate', 0.001, "learning rate.")
+tf.app.flags.DEFINE_float('learning_rate', 1e-4, "learning rate.")
 tf.app.flags.DEFINE_float(
     'end_learning_rate', 0.0001,
     'The minimal end learning rate used by a polynomial decay learning rate.')
@@ -74,13 +74,13 @@ model_pareto=[]
 def train():
     
 
-#    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/throttle_v1/train_throttle_v1.tfrecords']
-    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617.tfrecords',
-                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617_2.tfrecords',
-                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_262223.tfrecords']
+    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/throttle_v1/train_throttle_v1.tfrecords']
+#    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617.tfrecords',
+#                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617_2.tfrecords',
+#                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_262223.tfrecords']
     tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_val_4.tfrecords'
-    img, target = readTF(tfrecord_train, is_training=True)
-    images, labels = tf.train.shuffle_batch([img, target],
+    img, target_s, target_t = readTF(tfrecord_train, is_training=True)
+    images, label_s, label_t = tf.train.shuffle_batch([img, target_s, target_t],
                                         batch_size=FLAGS.batch_size, capacity=2000,
                                         min_after_dequeue=1000
                                                    )
@@ -122,8 +122,8 @@ def train():
 #    cprint('Label shape' + str(label_t), 'red')
 #    cprint('Logits shape' + str(logits), 'red')
     
-    total_loss = new_loss(logits_steering, labels, tf.to_float(tf.shape(images)[0]))
-#    total_loss = jointly_loss(logits_steering, logits_throttle, label_s, label_t, tf.to_float(tf.shape(images)[0]))
+#    total_loss, l2_norn, lr_loss = new_loss(logits, labels, tf.to_float(tf.shape(images)[0]))
+    total_loss = jointly_loss(logits_steering, logits_throttle, label_s, label_t, tf.to_float(tf.shape(images)[0]))
 
     # loss_avg
     ema = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
@@ -134,16 +134,17 @@ def train():
     #Define Learning Rate Decay Function
     num_samples_per_epoch = 110563
 #    num_samples_per_epoch = 217872
-    decay_steps = int(num_samples_per_epoch / FLAGS.batch_size * FLAGS.num_epochs_per_decay)
-    learning_rate_ = tf.train.exponential_decay(FLAGS.learning_rate,
-                                      global_step,
-                                      decay_steps,
-                                      FLAGS.learning_rate_decay_factor,
-                                      staircase=True,
-                                      name='exponential_decay_learning_rate')
-    tf.summary.scalar('learning_rate', learning_rate_)
+#    decay_steps = int(num_samples_per_epoch / FLAGS.batch_size * FLAGS.num_epochs_per_decay)
+#    learning_rate_ = tf.train.exponential_decay(FLAGS.learning_rate,
+#                                      global_step,
+#                                      decay_steps,
+#                                      FLAGS.learning_rate_decay_factor,
+#                                      staircase=True,
+#                                      name='exponential_decay_learning_rate')
+#    tf.summary.scalar('learning_rate', learning_rate_)
 
-
+    static_learning_rate = 1e-6
+    learning_rate_ = static_learning_rate
 #    opt = tf.train.MomentumOptimizer(learning_rate_, MOMENTUM)
     opt = tf.train.AdamOptimizer(learning_rate_)
     grads = opt.compute_gradients(total_loss)
@@ -388,6 +389,7 @@ def jointly_loss(logits_s, logits_t, label_s, label_t, x_shape):
     Task1_var_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='Task_1')
     Task2_var_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='Task_2')
     others_var_list = set(tf.trainable_variables()) - set(Task1_var_list) - set(Task2_var_list)
+    CNN_task1_var_list = set(tf.trainable_variables()) - set(Task2_var_list)
 
     for _var in Task1_var_list : cprint(_var,'green')
     for _var in Task2_var_list : cprint(_var,'red')
@@ -398,11 +400,15 @@ def jointly_loss(logits_s, logits_t, label_s, label_t, x_shape):
     CNN_l2_norm = tf.global_norm(list(others_var_list))
     task1_l2_norm = tf.global_norm(list(Task1_var_list))
     task2_l2_norm = tf.global_norm(list(Task2_var_list))
+    CNN_task1_l2_norm = tf.global_norm(list(CNN_task1_var_list))
+
+
+    l2_norm = tf.global_norm(tf.trainable_variables())
 
     loss_s = 0.5 * tf.reduce_sum(tf.square(logits_s - label_s)) / x_shape
     loss_t = 0.5 * tf.reduce_sum(tf.square(logits_t - label_t)) / x_shape
-#    total_loss = loss_s + loss_t + (5e-3 * CNN_l2_norm * 2 + 6e-4 * task1_l2_norm + 6e-4 * task2_l2_norm) / 4
-    total_loss = loss_s
+#    total_loss = loss_s + 4 * loss_t + (5e-3 * CNN_l2_norm * 2 + 6e-4 * task1_l2_norm + 6e-4 * task2_l2_norm) / 4
+    total_loss = loss_s + 0 * loss_t + 2e-6 * CNN_task1_l2_norm
 
     tf.summary.scalar("model/loss_s", loss_s)
     tf.summary.scalar("model/loss_t", loss_t)
