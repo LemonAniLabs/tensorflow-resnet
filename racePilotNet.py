@@ -27,7 +27,7 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', './train_log/pilotnet_v4',
+tf.app.flags.DEFINE_string('train_dir', './train_log/pilotnet_v6',
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_string('checkpoint_dir', './pure-model',
@@ -74,10 +74,10 @@ model_pareto=[]
 def train():
     
 
-    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/throttle_v1/train_throttle_v1.tfrecords']
-#    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617.tfrecords',
-#                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617_2.tfrecords',
-#                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_262223.tfrecords']
+#    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/throttle_v1/train_throttle_v1.tfrecords']
+    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617.tfrecords',
+                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617_2.tfrecords',
+                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_262223.tfrecords']
     tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_val_4.tfrecords'
     img, target_s, target_t = readTF(tfrecord_train, is_training=True)
     images, label_s, label_t = tf.train.shuffle_batch([img, target_s, target_t],
@@ -89,6 +89,7 @@ def train():
 #                                                    batch_size=FLAGS.batch_size, capacity=2000,
 #                                                    min_after_dequeue=1000
 #                                                   )
+    t_shape = tf.shape(images)
     """ TODO: IMAGE PREPROCESSING """
     tf.summary.image('images', images)
 
@@ -132,19 +133,20 @@ def train():
     tf.summary.scalar('loss_avg', loss_avg)
     
     #Define Learning Rate Decay Function
-    num_samples_per_epoch = 110563
-#    num_samples_per_epoch = 217872
-#    decay_steps = int(num_samples_per_epoch / FLAGS.batch_size * FLAGS.num_epochs_per_decay)
-#    learning_rate_ = tf.train.exponential_decay(FLAGS.learning_rate,
-#                                      global_step,
-#                                      decay_steps,
-#                                      FLAGS.learning_rate_decay_factor,
-#                                      staircase=True,
-#                                      name='exponential_decay_learning_rate')
-#    tf.summary.scalar('learning_rate', learning_rate_)
+#    num_samples_per_epoch = 110563
+    num_samples_per_epoch = 217872
+    decay_steps = int(num_samples_per_epoch / FLAGS.batch_size * FLAGS.num_epochs_per_decay)
+    learning_rate_ = tf.train.exponential_decay(FLAGS.learning_rate,
+                                      global_step,
+                                      decay_steps,
+                                      FLAGS.learning_rate_decay_factor,
+                                      staircase=True,
+                                      name='exponential_decay_learning_rate')
 
-    static_learning_rate = 1e-6
+#    static_learning_rate = 1e-6
     learning_rate_ = static_learning_rate
+    tf.summary.scalar('learning_rate', learning_rate_)
+
 #    opt = tf.train.MomentumOptimizer(learning_rate_, MOMENTUM)
     opt = tf.train.AdamOptimizer(learning_rate_)
     grads = opt.compute_gradients(total_loss)
@@ -209,7 +211,7 @@ def train():
 #            images_, targets_ = img_batch, label_batch 
 
             step = sess.run(global_step)
-            i = [train_op, total_loss]
+            i = [train_op, total_loss, logits_steering, label_s]
 
             write_summary = step % 100 and step > 1
             if write_summary:
@@ -220,7 +222,12 @@ def train():
             #    labels: targets_,
             #})
             o = sess.run(i, feed_dict={PilotNet.keep_prob: 0.8})
-
+            #print(sess.run(t_shape))
+            #print(sess.run(label_t))
+#            cprint(o[2],"green")
+#            cprint(o[3],"red")
+#            cprint(o[2]-o[3],"yellow")
+            
             loss_value = o[1]
 
             duration = time.time() - start_time
@@ -254,7 +261,7 @@ def train():
                 print(format_str % (step, loss_value, examples_per_sec, duration))
 
             if write_summary:
-                summary_str = o[2]
+                summary_str = o[4]
                 summary_writer.add_summary(summary_str, step)
 
 
@@ -407,8 +414,8 @@ def jointly_loss(logits_s, logits_t, label_s, label_t, x_shape):
 
     loss_s = 0.5 * tf.reduce_sum(tf.square(logits_s - label_s)) / x_shape
     loss_t = 0.5 * tf.reduce_sum(tf.square(logits_t - label_t)) / x_shape
-#    total_loss = loss_s + 4 * loss_t + (5e-3 * CNN_l2_norm * 2 + 6e-4 * task1_l2_norm + 6e-4 * task2_l2_norm) / 4
-    total_loss = loss_s + 0 * loss_t + 2e-6 * CNN_task1_l2_norm
+#    total_loss = loss_s + 4 * loss_t + (5e-3 * CNN_l2_norm + 6e-4 * task1_l2_norm + 6e-4 * task2_l2_norm) / 4
+    total_loss = loss_s + 4 * loss_t + 5e-8 * l2_norm
 
     tf.summary.scalar("model/loss_s", loss_s)
     tf.summary.scalar("model/loss_t", loss_t)
