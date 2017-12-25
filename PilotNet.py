@@ -92,8 +92,8 @@ def inference(x):
     print('h_fc4_drop : '+str(h_fc4_drop))
     
     #Output
-    W_fc5 = weight_variable([10, 1])
-    b_fc5 = bias_variable([1])
+    W_fc5 = weight_variable([10, 2])
+    b_fc5 = bias_variable([2])
     
     logits = tf.matmul(h_fc4_drop, W_fc5) + b_fc5
     #logits = tf.matmul(h_fc4_drop, W_fc5) + b_fc5
