@@ -27,7 +27,7 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', './train_log_pilotnet_2',
+tf.app.flags.DEFINE_string('train_dir', './train_log/2Command_v2',
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_string('checkpoint_dir', './pure-model',
@@ -78,9 +78,10 @@ def train():
 #                            [None, FLAGS.input_size, FLAGS.input_size, 3],
 #                            name="images")
 
-    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617.tfrecords',
-                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617_2.tfrecords',
-                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_262223.tfrecords']
+#    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617.tfrecords',
+#                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617_2.tfrecords',
+#                        '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_262223.tfrecords']
+    tfrecord_train = ['/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/throttle_v1/train_throttle_v1.tfrecords']
     tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_val_4.tfrecords'
     img, targets = readTF(tfrecord_train, is_training=True)
     images, labels = tf.train.shuffle_batch([img, targets],
@@ -133,6 +134,7 @@ def train():
     tf.summary.scalar('loss_avg', loss_avg)
     
     #Define Learning Rate Decay Function
+    num_samples_per_epoch = 110563
     num_samples_per_epoch = 217872
     decay_steps = int(num_samples_per_epoch / FLAGS.batch_size * FLAGS.num_epochs_per_decay)
     learning_rate_ = tf.train.exponential_decay(FLAGS.learning_rate,
@@ -382,6 +384,10 @@ def new_loss(logits, labels, x_shape):
 
     l2_norm = tf.global_norm(tf.trainable_variables())
     loss_ = 0.5 * tf.reduce_sum(tf.square(logits - labels)) / x_shape
+    steering_loss_ = 0.5 * tf.reduce_sum(tf.square(logits[:,0] - labels[:,0])) / x_shape
+    throttle_loss_ = 0.5 * tf.reduce_sum(tf.square(logits[:,1] - labels[:,1])) / x_shape
+    tf.summary.scalar("model/steering_loss", steering_loss_)
+    tf.summary.scalar("model/throttle_loss", throttle_loss_)
     tf.summary.scalar("model/loss", loss_)
     tf.summary.scalar("model/l2_norm", l2_norm)
     total_loss = loss_ + 5e-8 * l2_norm

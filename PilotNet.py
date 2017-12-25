@@ -16,6 +16,9 @@ def conv2d(x, W, stride):
 #y_ = tf.placeholder(tf.float32, shape=[None, 1])
 keep_prob = tf.placeholder(tf.float32)
 
+def lstm_Block(_input):
+    X = tf.reshape(_X, [-1, 28, 28])
+
 def inference(x):
     x_image = x
     print('image shape : ' + str(x_image))
@@ -92,8 +95,8 @@ def inference(x):
     print('h_fc4_drop : '+str(h_fc4_drop))
     
     #Output
-    W_fc5 = weight_variable([10, 1])
-    b_fc5 = bias_variable([1])
+    W_fc5 = weight_variable([10, 2])
+    b_fc5 = bias_variable([2])
     
     logits = tf.matmul(h_fc4_drop, W_fc5) + b_fc5
     #logits = tf.matmul(h_fc4_drop, W_fc5) + b_fc5
