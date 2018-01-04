@@ -1,13 +1,13 @@
 import tensorflow as tf
 #import scipy
 
-def weight_variable(shape):
+def weight_variable(shape, is_train=True):
   initial = tf.truncated_normal(shape, stddev=0.1)
-  return tf.Variable(initial)
+  return tf.Variable(initial, trainable=is_train)
 
-def bias_variable(shape):
+def bias_variable(shape, is_train=True):
   initial = tf.constant(0.1, shape=shape)
-  return tf.Variable(initial)
+  return tf.Variable(initial, trainable=is_train)
 
 def conv2d(x, W, stride):
   return tf.nn.conv2d(x, W, strides=[1, stride, stride, 1], padding='VALID')
@@ -15,6 +15,8 @@ def conv2d(x, W, stride):
 #x = tf.placeholder(tf.float32, shape=[None, 66, 200, 3])
 #y_ = tf.placeholder(tf.float32, shape=[None, 1])
 keep_prob = tf.placeholder(tf.float32)
+Steering_train = True
+Throttle_train = False
 
 def inference(x):
     x_image = x
@@ -65,90 +67,91 @@ def inference(x):
     with tf.name_scope('Task_1'):
         # FCL 1
         with tf.name_scope('Fc_1'):
-            W_fc1 = weight_variable([1152, 1164])
-            b_fc1 = bias_variable([1164])
+            s_W_fc1 = weight_variable([1152, 1164], Steering_train)
+            s_b_fc1 = bias_variable([1164], Steering_train)
         
-            h_conv5_flat = tf.reshape(h_conv5, [-1, 1152])
-            h_fc1 = tf.nn.relu(tf.matmul(h_conv5_flat, W_fc1) + b_fc1)
+            s_h_conv5_flat = tf.reshape(h_conv5, [-1, 1152])
+            s_h_fc1 = tf.nn.relu(tf.matmul(s_h_conv5_flat, s_W_fc1) + s_b_fc1)
         
-            h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+            s_h_fc1_drop = tf.nn.dropout(s_h_fc1, keep_prob)
         
         with tf.name_scope('Fc_2'):
             # FCL 2
-            W_fc2 = weight_variable([1164, 100])
-            b_fc2 = bias_variable([100])
+            s_W_fc2 = weight_variable([1164, 100], Steering_train)
+            s_b_fc2 = bias_variable([100], Steering_train)
             
-            h_fc2 = tf.nn.relu(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
+            s_h_fc2 = tf.nn.relu(tf.matmul(s_h_fc1_drop, s_W_fc2) + s_b_fc2)
             
-            h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
+            s_h_fc2_drop = tf.nn.dropout(s_h_fc2, keep_prob)
             
         with tf.name_scope('Fc_3'):
             # FCL 3
-            W_fc3 = weight_variable([100, 50])
-            b_fc3 = bias_variable([50])
+            s_W_fc3 = weight_variable([100, 50], Steering_train)
+            s_b_fc3 = bias_variable([50], Steering_train)
             
-            h_fc3 = tf.nn.relu(tf.matmul(h_fc2_drop, W_fc3) + b_fc3)
+            s_h_fc3 = tf.nn.relu(tf.matmul(s_h_fc2_drop, s_W_fc3) + s_b_fc3)
             
-            h_fc3_drop = tf.nn.dropout(h_fc3, keep_prob)
+            s_h_fc3_drop = tf.nn.dropout(s_h_fc3, keep_prob)
             
         with tf.name_scope('Fc_4'):
             # FCL 3
-            W_fc4 = weight_variable([50, 10])
-            b_fc4 = bias_variable([10])
+            s_W_fc4 = weight_variable([50, 10], Steering_train)
+            s_b_fc4 = bias_variable([10], Steering_train)
             
-            h_fc4 = tf.nn.relu(tf.matmul(h_fc3_drop, W_fc4) + b_fc4)
+            s_h_fc4 = tf.nn.relu(tf.matmul(s_h_fc3_drop, s_W_fc4) + s_b_fc4)
             
-            h_fc4_s_drop = tf.nn.dropout(h_fc4, keep_prob)
+            s_h_fc4_s_drop = tf.nn.dropout(s_h_fc4, keep_prob)
             
         with tf.name_scope('Action_Steering'):
             # Output-Steering
-            W_fc_s = weight_variable([10, 1])
-            b_fc_s = bias_variable([1])
+            s_W_fc_s = weight_variable([10, 1], Steering_train)
+            s_b_fc_s = bias_variable([1], Steering_train)
+        
+        logits_steering = tf.matmul(s_h_fc4_s_drop, s_W_fc_s) + s_b_fc_s
 
-    with tf.name_scope('Task_2'):
-        # FCL 1
-        with tf.name_scope('Fc_1'):
-            W_fc1 = weight_variable([1152, 1164])
-            b_fc1 = bias_variable([1164])
-        
-            h_conv5_flat = tf.reshape(h_conv5, [-1, 1152])
-            h_fc1 = tf.nn.relu(tf.matmul(h_conv5_flat, W_fc1) + b_fc1)
-        
-            h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
-        
-        with tf.name_scope('Fc_2'):
-            # FCL 2
-            W_fc2 = weight_variable([1164, 100])
-            b_fc2 = bias_variable([100])
-            
-            h_fc2 = tf.nn.relu(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
-            
-            h_fc2_drop = tf.nn.dropout(h_fc2, keep_prob)
-            
-        with tf.name_scope('Fc_3'):
-            # FCL 3
-            W_fc3 = weight_variable([100, 50])
-            b_fc3 = bias_variable([50])
-            
-            h_fc3 = tf.nn.relu(tf.matmul(h_fc2_drop, W_fc3) + b_fc3)
-            
-            h_fc3_drop = tf.nn.dropout(h_fc3, keep_prob)
-            
-        with tf.name_scope('Fc_4'):
-            # FCL 3
-            W_fc4 = weight_variable([50, 10])
-            b_fc4 = bias_variable([10])
-            
-            h_fc4 = tf.nn.relu(tf.matmul(h_fc3_drop, W_fc4) + b_fc4)
-            
-            h_fc4_t_drop = tf.nn.dropout(h_fc4, keep_prob)
-            
-        with tf.name_scope('Action_Throttle'):
-            # Output-Throttle
-            W_fc_t = weight_variable([10, 1])
-            b_fc_t = bias_variable([1])
-    
-    logits_steering = tf.matmul(h_fc4_s_drop, W_fc_s) + b_fc_s
-    logits_throttle = tf.matmul(h_fc4_t_drop, W_fc_t) + b_fc_t
+#    with tf.name_scope('Task_2'):
+#        # FCL 1
+#        with tf.name_scope('Fc_1'):
+#            t_W_fc1 = weight_variable([1152, 1164], Throttle_train)
+#            t_b_fc1 = bias_variable([1164], Throttle_train)
+#        
+#            t_h_conv5_flat = tf.reshape(h_conv5, [-1, 1152])
+#            t_h_fc1 = tf.nn.relu(tf.matmul(t_h_conv5_flat, t_W_fc1) + t_b_fc1)
+#        
+#            t_h_fc1_drop = tf.nn.dropout(t_h_fc1, keep_prob)
+#        
+#        with tf.name_scope('Fc_2'):
+#            # FCL 2
+#            t_W_fc2 = weight_variable([1164, 100], Throttle_train)
+#            t_b_fc2 = bias_variable([100], Throttle_train)
+#            
+#            t_h_fc2 = tf.nn.relu(tf.matmul(t_h_fc1_drop, t_W_fc2) + t_b_fc2)
+#            
+#            t_h_fc2_drop = tf.nn.dropout(t_h_fc2, keep_prob)
+#            
+#        with tf.name_scope('Fc_3'):
+#            # FCL 3
+#            t_W_fc3 = weight_variable([100, 50], Throttle_train)
+#            t_b_fc3 = bias_variable([50], Throttle_train)
+#            
+#            t_h_fc3 = tf.nn.relu(tf.matmul(t_h_fc2_drop, t_W_fc3) + t_b_fc3)
+#            
+#            t_h_fc3_drop = tf.nn.dropout(t_h_fc3, keep_prob)
+#            
+#        with tf.name_scope('Fc_4'):
+#            # FCL 3
+#            t_W_fc4 = weight_variable([50, 10], Throttle_train)
+#            t_b_fc4 = bias_variable([10], Throttle_train)
+#            
+#            t_h_fc4 = tf.nn.relu(tf.matmul(t_h_fc3_drop, t_W_fc4) + t_b_fc4)
+#            
+#            t_h_fc4_t_drop = tf.nn.dropout(t_h_fc4, keep_prob)
+#            
+#        with tf.name_scope('Action_Throttle'):
+#            # Output-Throttle
+#            t_W_fc_t = weight_variable([10, 1], Throttle_train)
+#            t_b_fc_t = bias_variable([1], Throttle_train)
+#    
+#        logits_throttle = tf.matmul(t_h_fc4_t_drop, t_W_fc_t) + t_b_fc_t
 
-    return logits_steering, logits_throttle
+    return logits_steering

@@ -27,7 +27,7 @@ UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('train_dir', './train_log/pilotnet_v6',
+tf.app.flags.DEFINE_string('train_dir', './train_log/pilotnet_v7',
                            """Directory where to write event logs """
                            """and checkpoint.""")
 tf.app.flags.DEFINE_string('checkpoint_dir', './pure-model',
@@ -40,7 +40,7 @@ tf.app.flags.DEFINE_float(
     'learning_rate_decay_factor', 0.94, 'Learning rate decay factor.')
 
 tf.app.flags.DEFINE_float(
-    'num_epochs_per_decay', 2.0,
+    'num_epochs_per_decay', 1.0,
     'Number of epochs after which learning rate decays.')
 tf.app.flags.DEFINE_float(
     'moving_average_decay', None,
@@ -79,8 +79,8 @@ def train():
                         '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_2617_2.tfrecords',
                         '/mnt/s1/kr7830/Data/TX2/tfRecords/pilotnet/train/train_pilot_262223.tfrecords']
     tfrecord_val = '/mnt/s1/kr7830/Data/TX2/tfRecords/validation/MiniCar_val_4.tfrecords'
-    img, target_s, target_t = readTF(tfrecord_train, is_training=True)
-    images, label_s, label_t = tf.train.shuffle_batch([img, target_s, target_t],
+    img, target_s = readTF(tfrecord_train, is_training=True)
+    images, label_s = tf.train.shuffle_batch([img, target_s],
                                         batch_size=FLAGS.batch_size, capacity=2000,
                                         min_after_dequeue=1000
                                                    )
@@ -95,7 +95,7 @@ def train():
 
     with tf.variable_scope("") as vs:
         if FLAGS.model == 'PilotNet':
-            logits_steering, logits_throttle = PilotNet.inference(images)
+            logits_steering = PilotNet.inference(images)
         else:
             logits = inference(images,
                                num_classes=1,
@@ -123,8 +123,8 @@ def train():
 #    cprint('Label shape' + str(label_t), 'red')
 #    cprint('Logits shape' + str(logits), 'red')
     
-#    total_loss, l2_norn, lr_loss = new_loss(logits, labels, tf.to_float(tf.shape(images)[0]))
-    total_loss = jointly_loss(logits_steering, logits_throttle, label_s, label_t, tf.to_float(tf.shape(images)[0]))
+    total_loss, l2_norn, lr_loss = new_loss(logits_steering, label_s, tf.to_float(tf.shape(images)[0]))
+#    total_loss = jointly_loss(logits_steering, logits_throttle, label_s, label_t, tf.to_float(tf.shape(images)[0]))
 
     # loss_avg
     ema = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
@@ -144,7 +144,7 @@ def train():
                                       name='exponential_decay_learning_rate')
 
 #    static_learning_rate = 1e-6
-    learning_rate_ = static_learning_rate
+#    learning_rate_ = static_learning_rate
     tf.summary.scalar('learning_rate', learning_rate_)
 
 #    opt = tf.train.MomentumOptimizer(learning_rate_, MOMENTUM)
@@ -167,7 +167,8 @@ def train():
 
     init_op = tf.initialize_all_variables()
 #    pretrained_var_map = {}
-#    for v in tf.trainable_variables():
+    cprint('### Trainable variable', 'white', 'on_grey')
+    for v in tf.trainable_variables():
 #        found = False
 #        for bad_layer in ["fc"]:
 #            if bad_layer in v.name:
@@ -177,7 +178,7 @@ def train():
 #            continue
 #
 #        pretrained_var_map[v.op.name[:]] = v
-#        #cprint(v.op.name[:],'yellow')
+        cprint(v.op.name[:],'yellow')
 #        print(v.op.name, v.get_shape())
 #    resnet_saver = tf.train.Saver(pretrained_var_map)
     def init_fn(ses):
@@ -224,8 +225,8 @@ def train():
             o = sess.run(i, feed_dict={PilotNet.keep_prob: 0.8})
             #print(sess.run(t_shape))
             #print(sess.run(label_t))
-#            cprint(o[2],"green")
-#            cprint(o[3],"red")
+#            cprint(o[2].shape,"green")
+#            cprint(o[3].shape,"red")
 #            cprint(o[2]-o[3],"yellow")
             
             loss_value = o[1]
@@ -398,6 +399,7 @@ def jointly_loss(logits_s, logits_t, label_s, label_t, x_shape):
     others_var_list = set(tf.trainable_variables()) - set(Task1_var_list) - set(Task2_var_list)
     CNN_task1_var_list = set(tf.trainable_variables()) - set(Task2_var_list)
 
+    cprint('### Split Train Variable for loss function', 'white', 'on_grey')
     for _var in Task1_var_list : cprint(_var,'green')
     for _var in Task2_var_list : cprint(_var,'red')
     for _var in others_var_list : cprint(_var,'yellow')
@@ -415,7 +417,8 @@ def jointly_loss(logits_s, logits_t, label_s, label_t, x_shape):
     loss_s = 0.5 * tf.reduce_sum(tf.square(logits_s - label_s)) / x_shape
     loss_t = 0.5 * tf.reduce_sum(tf.square(logits_t - label_t)) / x_shape
 #    total_loss = loss_s + 4 * loss_t + (5e-3 * CNN_l2_norm + 6e-4 * task1_l2_norm + 6e-4 * task2_l2_norm) / 4
-    total_loss = loss_s + 4 * loss_t + 5e-8 * l2_norm
+#    total_loss = loss_s + 4 * loss_t + 5e-8 * l2_norm # For whole net
+    total_loss = loss_s + 5e-8 * (CNN_task1_l2_norm) # For task 1
 
     tf.summary.scalar("model/loss_s", loss_s)
     tf.summary.scalar("model/loss_t", loss_t)
