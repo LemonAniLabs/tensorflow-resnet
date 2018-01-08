@@ -16,7 +16,7 @@ def conv2d(x, W, stride):
 #y_ = tf.placeholder(tf.float32, shape=[None, 1])
 keep_prob = tf.placeholder(tf.float32)
 Steering_train = True
-Throttle_train = False
+Throttle_train = True
 
 def inference(x):
     x_image = x
@@ -109,49 +109,49 @@ def inference(x):
         
         logits_steering = tf.matmul(s_h_fc4_s_drop, s_W_fc_s) + s_b_fc_s
 
-#    with tf.name_scope('Task_2'):
-#        # FCL 1
-#        with tf.name_scope('Fc_1'):
-#            t_W_fc1 = weight_variable([1152, 1164], Throttle_train)
-#            t_b_fc1 = bias_variable([1164], Throttle_train)
-#        
-#            t_h_conv5_flat = tf.reshape(h_conv5, [-1, 1152])
-#            t_h_fc1 = tf.nn.relu(tf.matmul(t_h_conv5_flat, t_W_fc1) + t_b_fc1)
-#        
-#            t_h_fc1_drop = tf.nn.dropout(t_h_fc1, keep_prob)
-#        
-#        with tf.name_scope('Fc_2'):
-#            # FCL 2
-#            t_W_fc2 = weight_variable([1164, 100], Throttle_train)
-#            t_b_fc2 = bias_variable([100], Throttle_train)
-#            
-#            t_h_fc2 = tf.nn.relu(tf.matmul(t_h_fc1_drop, t_W_fc2) + t_b_fc2)
-#            
-#            t_h_fc2_drop = tf.nn.dropout(t_h_fc2, keep_prob)
-#            
-#        with tf.name_scope('Fc_3'):
-#            # FCL 3
-#            t_W_fc3 = weight_variable([100, 50], Throttle_train)
-#            t_b_fc3 = bias_variable([50], Throttle_train)
-#            
-#            t_h_fc3 = tf.nn.relu(tf.matmul(t_h_fc2_drop, t_W_fc3) + t_b_fc3)
-#            
-#            t_h_fc3_drop = tf.nn.dropout(t_h_fc3, keep_prob)
-#            
-#        with tf.name_scope('Fc_4'):
-#            # FCL 3
-#            t_W_fc4 = weight_variable([50, 10], Throttle_train)
-#            t_b_fc4 = bias_variable([10], Throttle_train)
-#            
-#            t_h_fc4 = tf.nn.relu(tf.matmul(t_h_fc3_drop, t_W_fc4) + t_b_fc4)
-#            
-#            t_h_fc4_t_drop = tf.nn.dropout(t_h_fc4, keep_prob)
-#            
-#        with tf.name_scope('Action_Throttle'):
-#            # Output-Throttle
-#            t_W_fc_t = weight_variable([10, 1], Throttle_train)
-#            t_b_fc_t = bias_variable([1], Throttle_train)
-#    
-#        logits_throttle = tf.matmul(t_h_fc4_t_drop, t_W_fc_t) + t_b_fc_t
+    with tf.name_scope('Task_2'):
+        # FCL 1
+        with tf.name_scope('Fc_1'):
+            t_W_fc1 = weight_variable([1152, 1164], Throttle_train)
+            t_b_fc1 = bias_variable([1164], Throttle_train)
+        
+            t_h_conv5_flat = tf.reshape(h_conv5, [-1, 1152])
+            t_h_fc1 = tf.nn.relu(tf.matmul(t_h_conv5_flat, t_W_fc1) + t_b_fc1)
+        
+            t_h_fc1_drop = tf.nn.dropout(t_h_fc1, keep_prob)
+        
+        with tf.name_scope('Fc_2'):
+            # FCL 2
+            t_W_fc2 = weight_variable([1164, 100], Throttle_train)
+            t_b_fc2 = bias_variable([100], Throttle_train)
+            
+            t_h_fc2 = tf.nn.relu(tf.matmul(t_h_fc1_drop, t_W_fc2) + t_b_fc2)
+            
+            t_h_fc2_drop = tf.nn.dropout(t_h_fc2, keep_prob)
+            
+        with tf.name_scope('Fc_3'):
+            # FCL 3
+            t_W_fc3 = weight_variable([100, 50], Throttle_train)
+            t_b_fc3 = bias_variable([50], Throttle_train)
+            
+            t_h_fc3 = tf.nn.relu(tf.matmul(t_h_fc2_drop, t_W_fc3) + t_b_fc3)
+            
+            t_h_fc3_drop = tf.nn.dropout(t_h_fc3, keep_prob)
+            
+        with tf.name_scope('Fc_4'):
+            # FCL 3
+            t_W_fc4 = weight_variable([50, 10], Throttle_train)
+            t_b_fc4 = bias_variable([10], Throttle_train)
+            
+            t_h_fc4 = tf.nn.relu(tf.matmul(t_h_fc3_drop, t_W_fc4) + t_b_fc4)
+            
+            t_h_fc4_t_drop = tf.nn.dropout(t_h_fc4, keep_prob)
+            
+        with tf.name_scope('Action_Throttle'):
+            # Output-Throttle
+            t_W_fc_t = weight_variable([10, 1], Throttle_train)
+            t_b_fc_t = bias_variable([1], Throttle_train)
+    
+        logits_throttle = tf.matmul(t_h_fc4_t_drop, t_W_fc_t) + t_b_fc_t
 
-    return logits_steering
+    return logits_steering, logits_throttle
