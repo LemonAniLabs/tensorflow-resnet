@@ -22,8 +22,8 @@ CONV_WEIGHT_STDDEV = 0.1
 FC_WEIGHT_DECAY = 0.00004
 FC_WEIGHT_STDDEV = 0.01
 MOMENTUM = 0.9
-RESNET_VARIABLES = 'resnet_variables'
-UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
+PILOTNET_VARIABLES = 'pilotnet_variables'
+UPDATE_OPS_COLLECTION = 'pilotnet_update_ops'  # must be grouped with training op
 IMAGENET_MEAN_BGR = [103.062623801, 115.902882574, 123.151630838, ]
 
 FLAGS = tf.app.flags.FLAGS
@@ -222,7 +222,7 @@ def train():
             #    images: images_,
             #    labels: targets_,
             #})
-            o = sess.run(i, feed_dict={PilotNet.keep_prob: 1.0})
+            o = sess.run(i, feed_dict={PilotNet.keep_prob: 1.0, PilotNet.is_training: True})
             #print(sess.run(t_shape))
             #print(sess.run(label_t))
 #            cprint(o[2].shape,"green")
@@ -572,7 +572,7 @@ def _get_variable(name,
         regularizer = tf.contrib.layers.l2_regularizer(weight_decay)
     else:
         regularizer = None
-    collections = [tf.GraphKeys.GLOBAL_VARIABLES, RESNET_VARIABLES]
+    collections = [tf.GraphKeys.GLOBAL_VARIABLES, PILOTNET_VARIABLES]
     return tf.get_variable(name,
                            shape=shape,
                            initializer=initializer,
